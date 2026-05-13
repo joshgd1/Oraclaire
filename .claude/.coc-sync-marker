@@ -1,0 +1,35 @@
+# COC Sync Marker — kailash-coc-claude-py
+timestamp: 2026-05-13T03:39:04Z
+source: loom/.claude
+loom_sha: 2a497fc
+loom_version: 2.30.0
+variant: py
+clis: [claude]
+correction: issue-179-overlay-regression-repair
+stats:
+  total_considered: 1604
+  global_written: 8
+  global_unchanged: 401
+  overlay_full_written: 137
+  overlay_full_unchanged: 4
+  overlay_slot_written: 1
+  overlay_slot_unchanged: 0
+  overlay_compose_failed: 0
+  variant_only_written: 4
+  variant_only_unchanged: 15
+  excluded_skipped: 773
+  tier_filtered: 280
+  baselines_emitted:
+    cc: 0   # CLAUDE.md preserved, not emitted
+  cli_artifacts: null   # CC-only template — no Codex/Gemini
+  preserved:
+    - CLAUDE.md
+verify_overlays:
+  langs_checked: py
+  total_checks: 286
+  passing: 286
+  failing: 0
+  post_sync_status: PASS
+sdk_pin_change:
+  kailash: "2.19.0 -> 2.20.3"
+uv_sync: PASS
