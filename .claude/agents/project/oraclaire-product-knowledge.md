@@ -17,7 +17,7 @@ Oraclaire is a **classification product**, not a predictive product.
 - **Output:** 4-tier burnout risk classification per employee per assessment cycle (Low / Moderate / High / Critical)
 - **What it measures:** Current burnout risk state as of the assessment date
 - **What it does NOT do:** Predict future burnout onset, claim longitudinal validity, or forecast risk over a time window
-- **Model family (pre-selected):** XGBoost + SHAP (architecture decisions deferred to Phase 5)
+- **Model family (Sprint 1 — confirmed D17):** Random Forest + SHAP (n_estimators=100, max_depth=5, random_state=42)
 - **Validation type:** Cross-sectional (single-timepoint classification)
 - **Inter-cycle window:** Draft 30 days — assessment recalibration window, not prediction horizon. Founder owns this parameter.
 
@@ -221,19 +221,22 @@ Automated scoring in employment contexts is high-risk AI. Applies to any Oraclai
 
 ## 6. Decision Log Index
 
-All 9 Phase 1 decisions with one-line summaries. Each links to its full journal entry in `workspaces/Oraclaire/journal/`.
+All 17 decisions with one-line summaries. Each links to its full journal entry in `workspaces/Oraclaire/journal/`.
 
-| #   | Decision                             | One-Line Summary                                                                          | Journal Entry                                    |
-| --- | ------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| 1   | Two-tier scoring model               | Individual opt-in scoring + team aggregate default; PDPA-compliant consent architecture   | `0001-DECISION-two-tier-scoring.md`              |
-| 2   | FP cost includes participation decay | Structural trust-erosion cost, not just $15 check-in; death spiral above 20% FP           | `0002-DECISION-fp-trust-erosion.md`              |
-| 3   | FN cost uses sourced market data     | $4K–$21K from market landscape, not salary assumptions; defensible in presentation        | `0003-DECISION-fn-cost-anchor.md`                |
-| 4   | FN cost split by employee tier       | Junior $4K (70%) vs Senior $21K (30%); driven by replacement difficulty                   | `0004-DECISION-fn-cost-tier-split.md`            |
-| 5   | FP trust erosion quantified          | Participation decay thresholds: stable <=20%, decay >20%, death spiral >30%               | `0005-DECISION-fp-trust-quantified.md`           |
-| 6   | Legal-safety population exclusions   | PIP, ADA, FMLA, workers comp, grievance cooldown; prevent discoverable data               | `0006-DECISION-legal-safety-exclusions.md`       |
-| 7   | Throughput reframed as participation | 40% sustained participation over 12 cycles, not server capacity                           | `0007-DECISION-throughput-participation.md`      |
-| 8   | EU AI Act as structural floor        | Human oversight at Critical tier; SHAP for transparency; Phase 1 architectural constraint | `0008-DECISION-eu-ai-act.md`                     |
-| 9   | Classification, not prediction       | Cross-sectional classifier, not predictive model; data cannot support temporal claims     | `0009-DECISION-classification-not-prediction.md` |
+| #   | Decision                             | One-Line Summary                                                                               | Journal Entry                                    |
+| --- | ------------------------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| 1   | Two-tier scoring model               | Individual opt-in scoring + team aggregate default; PDPA-compliant consent architecture        | `0001-DECISION-two-tier-scoring.md`              |
+| 2   | FP cost includes participation decay | Structural trust-erosion cost, not just $15 check-in; death spiral above 20% FP                | `0002-DECISION-fp-trust-erosion.md`              |
+| 3   | FN cost uses sourced market data     | $4K–$21K from market landscape, not salary assumptions; defensible in presentation             | `0003-DECISION-fn-cost-anchor.md`                |
+| 4   | FN cost split by employee tier       | Junior $4K (70%) vs Senior $21K (30%); driven by replacement difficulty                        | `0004-DECISION-fn-cost-tier-split.md`            |
+| 5   | FP trust erosion quantified          | Participation decay thresholds: stable <=20%, decay >20%, death spiral >30%                    | `0005-DECISION-fp-trust-quantified.md`           |
+| 6   | Legal-safety population exclusions   | PIP, ADA, FMLA, workers comp, grievance cooldown; prevent discoverable data                    | `0006-DECISION-legal-safety-exclusions.md`       |
+| 7   | Throughput reframed as participation | 40% sustained participation over 12 cycles, not server capacity                                | `0007-DECISION-throughput-participation.md`      |
+| 8   | EU AI Act as structural floor        | Human oversight at Critical tier; SHAP for transparency; Phase 1 architectural constraint      | `0008-DECISION-eu-ai-act.md`                     |
+| 9   | Classification, not prediction       | Cross-sectional classifier, not predictive model; data cannot support temporal claims          | `0009-DECISION-classification-not-prediction.md` |
+| 14  | Phase 1 closure (D14, D15)           | Ten standing decisions locked, Phase 1 complete; Phase 2 data audit begins                     | `0014-DECISION-d15-phase1-closure.md`            |
+| 16  | XGBoost disqualified (D16)           | MFS SHAP 97.4% — fatigue detector not burnout detector; Sprint 2 re-entry on expanded features | `0015-DECISION-d16-xgboost-disqualification.md`  |
+| 17  | Random Forest Sprint 1 model (D17)   | Only non-artifact-contaminated candidate; 3-signal balance; threshold 0.30 provisional         | `0016-DECISION-d17-phase5-pick.md`               |
 
 ---
 
