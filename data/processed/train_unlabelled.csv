@@ -1,0 +1,4 @@
+Employee ID,Date of Joining,Gender,Company Type,WFH Setup Available,Designation,Resource Allocation,Mental Fatigue Score,Burn Rate,_source,missing_resource_allocation,missing_mental_fatigue
+EID_011,2019-04-03,Male,Service,No,Manager,8.5,7.3,,SAMPLE,0,0
+EID_013,2021-03-07,Male,Service,Yes,Associate,3.5,3.2,,SAMPLE,0,0
+EID_015,2019-09-08,Female,Product,Yes,Senior Analyst,,5.9,,SAMPLE,1,0

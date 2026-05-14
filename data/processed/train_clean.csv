@@ -1,0 +1,13 @@
+Employee ID,Date of Joining,Gender,Company Type,WFH Setup Available,Designation,Resource Allocation,Mental Fatigue Score,Burn Rate,_source,missing_resource_allocation,missing_mental_fatigue
+EID_001,2020-03-15,Male,Service,Yes,Analyst,5.0,4.2,0.45,SAMPLE,0,0
+EID_002,2019-07-22,Female,Product,No,Senior Analyst,7.0,6.1,0.72,SAMPLE,0,0
+EID_003,2021-01-10,Male,Service,Yes,Associate,3.0,3.5,0.30,SAMPLE,0,0
+EID_004,2018-11-05,Female,Product,Yes,Lead,8.0,7.8,0.85,SAMPLE,0,0
+EID_005,2020-09-18,Male,Service,No,Analyst,4.0,3.9,0.38,SAMPLE,0,0
+EID_006,2017-05-30,Female,Product,Yes,Manager,9.0,8.2,0.91,SAMPLE,0,0
+EID_008,2021-06-14,Female,Product,No,Associate,2.0,2.8,0.25,SAMPLE,0,0
+EID_010,2018-08-12,Female,Product,Yes,Lead,7.5,6.7,0.74,SAMPLE,0,0
+EID_012,2020-11-19,Female,Product,Yes,Analyst,,4.1,0.42,SAMPLE,1,0
+EID_014,2018-02-14,Male,Service,No,Lead,7.0,,0.68,SAMPLE,0,1
+EID_017,2021-08-30,Female,Product,No,Associate,2.5,2.1,0.22,SAMPLE,0,0
+EID_018,2019-01-17,Male,Service,Yes,Manager,9.5,8.9,0.95,SAMPLE,0,0

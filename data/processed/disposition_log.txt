@@ -1,0 +1,20 @@
+Disposition Log — Phase 2 Data Audit
+============================================================
+Source: data/raw/train_sample.csv (20 rows)
+Hard excluded: 4 rows
+Unlabelled pool: 3 rows
+Clean dataset: 13 rows
+
+FINDING 1: EXCLUDE row 14 (fakeEMP_007 duplicate) — kept row 7
+FINDING 2: EXCLUDE row 15 (TEST_001 test account)
+FINDING 3: FLAG — resolved by Finding 1 exclusion. Note: fakeEMP_ prefix rows excluded immediately in real Kaggle dataset.
+FINDING 4: FLAG — _source=SAMPLE expected on sample. Required on augmented production rows. Absence BLOCKS Phase 3.
+FINDING 5: FLAG — Sparsity audit not applicable to Kaggle source — cross-sectional schema. Oraclaire production schema must include cycle_id field from first deployment. Add cycle_id to T01 schema definition.
+FINDING 6: EXCLUDE row 9 (Mental Fatigue Score 11.5, above max 10.0)
+FINDING 7: EXCLUDE row 18 (Resource Allocation 0.2, below min 1.0)
+FINDING 8: LEAVE row 22 (Mental Fatigue Score 8.9, within range, legitimate signal)
+FINDING 9: LEAVE row 22 (Resource Allocation 9.5, within range, legitimate signal)
+FINDING 10: LEAVE — no label leakage detected. Standing instruction: rerun on full Kaggle dataset before Phase 3.
+FINDING 11: FLAG — missing_resource_allocation indicator column added. Imputation strategy deferred to Phase 3 (median default).
+FINDING 12: FLAG — missing_mental_fatigue indicator column added. Imputation strategy deferred to Phase 3 (median default, higher priority than Resource Allocation).
+FINDING 13: EXCLUDE from training — rows with no Burn Rate moved to data/processed/train_unlabelled.csv. Not deleted. Available for semi-supervised extension in Sprint 2.
