@@ -22,6 +22,8 @@ FEATURES = [
     "missing_mfs",
     "seniority_tier",
     "tenure_days",
+    "tenure_fatigue",
+    "tenure_workload",
 ]
 
 SENIORITY_DESIGNATION_CUTOFF = 4    # Kaggle fallback — Designation >= this value = senior (superseded by HRIS at deployment)
@@ -31,7 +33,7 @@ BINARISATION_THRESHOLD = 0.45
 # Two-threshold architecture (D11 Nuance 3, D17 confirmed).
 # Both start at 0.30. Threshold B updated after HRIS validation — no code change.
 
-THRESHOLD_A = 0.30  # General population (FN cost $4,000)
+THRESHOLD_A = 0.35  # General population (FN cost $4,000) — D26 locked
 THRESHOLD_B = 0.30  # Senior tier (FN cost $21,000) — provisional, update after HRIS validation
 
 # Pre-registered floors (D18 confirmed, D20 re-confirmed)
@@ -41,8 +43,8 @@ THRESHOLD_A_FN_TARGET = 0.15   # 15% FN target on general population
 THRESHOLD_B_FP_CEILING = 0.20  # 20% FP ceiling on senior tier
 THRESHOLD_B_FN_TARGET = 0.10   # 10% FN target on senior tier
 
-DRIFT_TOLERANCE = 0.05         # ±0.05 from provisional 0.30 (D17)
-DRIFT_ACCEPTABLE_RANGE = (0.25, 0.35)
+DRIFT_TOLERANCE = 0.05         # ±0.05 from current THRESHOLD_A. Original 0.30 exceeded per D26 — new anchor is THRESHOLD_A = 0.35. Range: DRIFT_ACCEPTABLE_RANGE.
+DRIFT_ACCEPTABLE_RANGE = (0.30, 0.40)  # ±0.05 from THRESHOLD_A 0.35 (D26). Future adjustments within this range are adjustments. Outside this range require a new cost rationale.
 
 BRIER_FLOOR = 0.15  # Calibration floor (D18). Exceed → Platt scaling before threshold selection.
 
@@ -53,8 +55,8 @@ BRIER_FLOOR = 0.15  # Calibration floor (D18). Exceed → Platt scaling before t
 TIER_BOUNDARIES = {
     "low": (0.00, 0.20),
     "moderate": (0.20, 0.30),
-    "high": (0.30, 0.75),
-    "critical": (0.75, 1.00),
+    "high": (0.30, 0.90),
+    "critical": (0.90, 1.00),
 }
 
 TIER_COLORS = {

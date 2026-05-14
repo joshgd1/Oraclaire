@@ -74,14 +74,22 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     df["Date of Joining"] = pd.to_datetime(df["Date of Joining"])
     df["tenure_days"] = (REFERENCE_DATE - df["Date of Joining"]).dt.days
 
-    # seniority_tier from Designation — map strings to numeric levels
+    # seniority_tier from Designation — handle both string and numeric formats.
+    # Raw Kaggle data uses numeric (0-5), clean data uses string labels.
     designation_order = {
         "Analyst": 1, "Associate": 2, "Senior Analyst": 3,
         "Lead": 4, "Manager": 5,
     }
-    df["_designation_level"] = df["Designation"].map(designation_order).fillna(0)
+    if pd.api.types.is_numeric_dtype(df["Designation"]):
+        df["_designation_level"] = df["Designation"].fillna(0)
+    else:
+        df["_designation_level"] = df["Designation"].map(designation_order).fillna(0)
     df["seniority_tier"] = (df["_designation_level"] >= SENIORITY_DESIGNATION_CUTOFF).astype(int)
     df = df.drop(columns=["_designation_level"])
+
+    # Interaction terms (D24 RE-DO Round 1) — dilute MFS SHAP dominance
+    df["tenure_fatigue"] = df["tenure_days"] * df["mental_fatigue_score"]
+    df["tenure_workload"] = df["tenure_days"] * df["resource_allocation"]
 
     # Binary encoding
     df["company_type"] = (df["Company Type"] == "Product").astype(int)
