@@ -66,3 +66,6 @@ secrets/
 **/scripts/data/
 **/scripts/outputs/
 **/scripts/*.log
+
+# COC runtime logs (local telemetry, not artifacts)
+.claude/logs/
