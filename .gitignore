@@ -69,3 +69,8 @@ secrets/
 
 # COC runtime logs (local telemetry, not artifacts)
 .claude/logs/
+
+# Oraclaire dev artifacts
+oraclaire.db
+data/plans/
+data/processed/unlabelled_pool.csv
