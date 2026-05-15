@@ -6,6 +6,11 @@ from src.model.services.deployment_parameter import (
     DeploymentParameterService,
 )
 from src.model.services.exclusion import ExclusionEngine
+from src.model.services.feature_extraction import (
+    ExtractedFeatures,
+    extract_from_cbi,
+    extract_from_pulse,
+)
 from src.model.services.permission import (
     Action,
     Permission,
@@ -18,6 +23,9 @@ __all__ = [
     "AuditLogService",
     "DeploymentParameterService",
     "ExclusionEngine",
+    "ExtractedFeatures",
+    "extract_from_cbi",
+    "extract_from_pulse",
     "Permission",
     "PermissionDenied",
     "PermissionService",

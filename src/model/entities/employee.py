@@ -8,10 +8,10 @@ Fields:
 - team_id: FK to Team; nullable for employees not yet assigned
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum as PyEnum
 
-from sqlalchemy import String, ForeignKey, Enum, Index
+from sqlalchemy import String, ForeignKey, Enum, Index, Date, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, OrganisationMixin
@@ -85,6 +85,11 @@ class Employee(Base, TimestampMixin, OrganisationMixin):
         Enum(ExclusionCategory),
         nullable=True,
     )
+
+    # Feature extraction fields (M5-09 — tenure, company type, WFH)
+    date_of_joining: Mapped[date | None] = mapped_column(Date, nullable=True)
+    company_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "Product" or "Service"
+    wfh_setup_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # Relations
     organisation = relationship("Organisation", back_populates="employees")

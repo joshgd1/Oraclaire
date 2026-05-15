@@ -131,6 +131,15 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
     factory = get_session_factory()
     session = factory()
     try:
+        # Get cycle type to route to CBI or pulse feature extraction
+        cycle = session.query(AssessmentCycle).filter(
+            AssessmentCycle.id == cycle_id,
+        ).first()
+        if not cycle:
+            logger.error("scoring.cycle_not_found", cycle_id=cycle_id)
+            return
+        cycle_type = cycle.cycle_type.value  # "cbi" or "pulse"
+
         # M4-09: exclude employees in teams below minimum team size
         employees = (
             session.query(Employee)
@@ -143,33 +152,95 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
             )
             .all()
         )
+        employee_ids = [emp.id for emp in employees]
+
+        # Batch-fetch all assessment responses for scored employees
+        from src.model.entities import AssessmentResponse
+        all_responses = (
+            session.query(AssessmentResponse)
+            .filter(
+                AssessmentResponse.cycle_id == cycle_id,
+                AssessmentResponse.employee_id.in_(employee_ids),
+            )
+            .all()
+        )
+
+        # Group responses by employee_id
+        from collections import defaultdict
+        responses_by_employee: dict[int, list[AssessmentResponse]] = defaultdict(list)
+        for resp in all_responses:
+            responses_by_employee[resp.employee_id].append(resp)
 
         scored_at = datetime.now(timezone.utc)
 
         for emp in employees:
-            if model is None:
+            emp_responses = responses_by_employee.get(emp.id, [])
+            seniority_tier = emp.seniority_tier if emp.seniority_tier is not None else 0
+
+            # M5-09: build feature vector from real assessment responses
+            if model is None or not emp_responses:
                 numeric_score = 0.5
                 risk_tier = "moderate"
+                shap_values_out = []
+                threshold_used = "A (general)"
+                threshold_value = THRESHOLD_A
+                model_version_str = "1.0.0-fallback"
             else:
-                # Collect features — M2-05 real feature extraction wires in here
-                features = [0.0] * 10
-                numeric_score = float(model.predict_proba([features])[0][1])
-                tier = "low"
-                for name, (lo, hi) in TIER_BOUNDARIES.items():
-                    if lo <= numeric_score < hi:
-                        tier = name
-                        break
-                risk_tier = tier
+                # Sort responses by item_index
+                sorted_responses = sorted(emp_responses, key=lambda r: r.item_index)
+                response_values = [r.response_value for r in sorted_responses]
+
+                if cycle_type == "cbi":
+                    # CBI: 19 items → extract 10 features
+                    from src.model.services.feature_extraction import extract_from_cbi
+                    feat = extract_from_cbi(
+                        responses=response_values,
+                        seniority_tier=seniority_tier,
+                        joining_date=emp.date_of_joining,
+                        company_type=emp.company_type,
+                        wfh_setup=emp.wfh_setup_available if hasattr(emp, "wfh_setup_available") else False,
+                        reference_date=scored_at.date(),
+                    )
+                    features = feat.to_dict()
+                else:
+                    # Pulse: single item
+                    from src.model.services.feature_extraction import extract_from_pulse
+                    pulse_val = response_values[0] if response_values else 3.0
+                    feat = extract_from_pulse(
+                        pulse_response=pulse_val,
+                        seniority_tier=seniority_tier,
+                        joining_date=emp.date_of_joining,
+                        company_type=emp.company_type,
+                        wfh_setup=emp.wfh_setup_available if hasattr(emp, "wfh_setup_available") else False,
+                        reference_date=scored_at.date(),
+                    )
+                    features = feat.to_dict()
+
+                # Use serve.score_employee for proper scoring + SHAP
+                from src.model.serve import score_employee
+                result = score_employee(
+                    employee_id=str(emp.id),
+                    features=features,
+                    seniority_tier=seniority_tier,
+                    model_path=MODEL_ARTIFACT_PATH,
+                    log_to_audit=False,
+                )
+                numeric_score = result["burnout_probability"]
+                risk_tier = result["risk_tier"]
+                shap_values_out = result["shap"]
+                threshold_used = result["threshold_used"]
+                threshold_value = result["threshold_value"]
+                model_version_str = result.get("model_version", "1.0.0")
 
             score = RiskScore(
                 employee_id=emp.id,
                 cycle_id=cycle_id,
                 risk_tier=risk_tier,
                 numeric_score=numeric_score,
-                shap_values=[],
-                model_version="1.0.0",
+                shap_values=shap_values_out,
+                model_version=model_version_str,
                 scored_at=scored_at,
-                seniority_tier_at_score=emp.seniority_tier,
+                seniority_tier_at_score=seniority_tier,
             )
             session.add(score)
 

@@ -97,6 +97,8 @@ class TestScoringPipeline:
             "missing_mfs": 0,
             "seniority_tier": 0,
             "tenure_days": 500,
+            "tenure_fatigue": 3500.0,
+            "tenure_workload": 3000.0,
         }
 
         result = score_employee("TEST_001", features, seniority_tier=0)
@@ -121,6 +123,8 @@ class TestScoringPipeline:
             "missing_mfs": 0,
             "seniority_tier": 1,
             "tenure_days": 1500,
+            "tenure_fatigue": 4500.0,
+            "tenure_workload": 6000.0,
         }
 
         result = score_employee("TEST_002", features, seniority_tier=1)
@@ -140,6 +144,8 @@ class TestScoringPipeline:
             "missing_mfs": 0,
             "seniority_tier": 0,
             "tenure_days": 300,
+            "tenure_fatigue": 1200.0,
+            "tenure_workload": 1500.0,
         }
 
         result = score_employee("TEST_003", features, seniority_tier=0)
@@ -163,11 +169,14 @@ class TestThresholdRouting:
 
         assert classify_tier(0.0) == "low"
         assert classify_tier(0.10) == "low"
+        assert classify_tier(0.19) == "low"
         assert classify_tier(0.20) == "moderate"
         assert classify_tier(0.25) == "moderate"
+        assert classify_tier(0.29) == "moderate"
         assert classify_tier(0.30) == "high"
         assert classify_tier(0.50) == "high"
-        assert classify_tier(0.75) == "critical"
+        assert classify_tier(0.89) == "high"
+        assert classify_tier(0.90) == "critical"
         assert classify_tier(1.0) == "critical"
 
     def test_threshold_routing(self):
