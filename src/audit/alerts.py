@@ -44,6 +44,8 @@ class AlertRecord(BaseModel):
     total_count: int
     timestamp: str
     status: AlertStatus = AlertStatus.ACTIVE
+    team_id: int | None = None        # only for ORT_THRESHOLD_EXCEEDED
+    team_name: str | None = None      # only for ORT_THRESHOLD_EXCEEDED
 
 
 class AcknowledgmentRecord(BaseModel):
@@ -92,6 +94,8 @@ def write_alert(
     ceiling: float = 0.05,
     participation_rate: float | None = None,
     alert_type: str = "CRITICAL_CEILING_EXCEEDED",
+    team_id: int | None = None,
+    team_name: str | None = None,
 ) -> str:
     """Write an alert record; returns the generated alert_id."""
     alert_id = str(uuid.uuid4())
@@ -107,6 +111,8 @@ def write_alert(
         total_count=total_count,
         timestamp=datetime.now(timezone.utc).isoformat(),
         status=AlertStatus.ACTIVE,
+        team_id=team_id,
+        team_name=team_name,
     )
     _append(ALERTS_LOG, record)
     return alert_id
@@ -149,6 +155,8 @@ def write_acknowledgment(
                     total_count=rec.total_count,
                     timestamp=rec.timestamp,
                     status=AlertStatus.ACKNOWLEDGED,
+                    team_id=rec.team_id,
+                    team_name=rec.team_name,
                 )
             fh.write(rec.model_dump_json() + "\n")
 

@@ -14,7 +14,15 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.model.entities import AssessmentCycle, Employee, Role, RiskScore, Team
+from src.model.entities import (
+    AssessmentCycle,
+    Employee,
+    HumanReview,
+    ReviewStatus,
+    Role,
+    RiskScore,
+    Team,
+)
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import Action, PermissionDenied, PermissionService
 from src.config import MIN_TEAM_SIZE
@@ -114,7 +122,7 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
     """
     from src.config import THRESHOLD_A, THRESHOLD_B, TIER_BOUNDARIES
     from src.config import MODEL_ARTIFACT_PATH
-    from src.model.services.cycle_health import check_critical_ceiling, check_participation_floor
+    from src.model.services.cycle_health import check_critical_ceiling, check_participation_floor, check_organisational_risk_threshold
     import joblib
     from pathlib import Path
     import structlog
@@ -243,6 +251,17 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                 seniority_tier_at_score=seniority_tier,
             )
             session.add(score)
+            session.flush()  # get score.id for HumanReview FK
+
+            # M6-01: hold Critical-tier employees at review gate
+            if risk_tier == "critical":
+                hr = HumanReview(
+                    employee_id=emp.id,
+                    cycle_id=cycle_id,
+                    risk_score_id=score.id,
+                    review_status=ReviewStatus.PENDING_REVIEW,
+                )
+                session.add(hr)
 
         session.commit()
         logger.info("scoring.complete", cycle_id=cycle_id, scored=len(employees))
@@ -275,6 +294,26 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
         except Exception as exc:
             logger.error(
                 "scoring.participation_alert.failed",
+                cycle_id=cycle_id,
+                error=str(exc),
+            )
+
+        # M6-04: check organisational risk threshold per team after scoring commits
+        try:
+            ort_results = check_organisational_risk_threshold(cycle_id, organisation_id)
+            if ort_results:
+                for team_id, result in ort_results.items():
+                    logger.info(
+                        "scoring.ort_alert.fired",
+                        cycle_id=cycle_id,
+                        team_id=team_id,
+                        team_name=result["team_name"],
+                        hc_pct=result["hc_pct"],
+                        weeks=result["weeks"],
+                    )
+        except Exception as exc:
+            logger.error(
+                "scoring.ort_check.failed",
                 cycle_id=cycle_id,
                 error=str(exc),
             )
@@ -347,6 +386,8 @@ async def list_alerts(request: Request) -> JSONResponse:
                 "total_count": a.total_count,
                 "timestamp": a.timestamp,
                 "status": a.status.value,
+                "team_id": a.team_id,
+                "team_name": a.team_name,
             }
             for a in cycle_alerts
         ],

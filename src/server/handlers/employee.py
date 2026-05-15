@@ -16,6 +16,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.model.entities import Employee, RiskScore, Role
+from src.model.serve import get_resources_for_score
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import (
     Action,
@@ -155,6 +156,7 @@ async def get_my_scores(request: Request) -> JSONResponse:
         ).order_by(RiskScore.scored_at.desc()).first()
         if not score:
             return JSONResponse({"scores": []})
+        resources = get_resources_for_score(score.shap_values)
         return JSONResponse({
             "scores": [{
                 "id": score.id,
@@ -163,6 +165,7 @@ async def get_my_scores(request: Request) -> JSONResponse:
                 "risk_tier": score.risk_tier,
                 "model_version": score.model_version,
                 "scored_at": score.scored_at.isoformat(),
+                "resources": resources,
             }]
         })
     finally:
@@ -195,9 +198,11 @@ async def get_my_shap(request: Request) -> JSONResponse:
         ).order_by(RiskScore.scored_at.desc()).first()
         if not score:
             return JSONResponse({"shap_values": []})
+        resources = get_resources_for_score(score.shap_values)
         return JSONResponse({
             "shap_values": score.shap_values,
             "seniority_tier_at_score": score.seniority_tier_at_score,
+            "resources": resources,
         })
     finally:
         session.close()

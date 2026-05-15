@@ -19,6 +19,7 @@ from .employee import (
     SenioritySource,
 )
 from .exclusion import Exclusion, ExclusionSource
+from .human_review import HumanReview, ReviewStatus
 from .organisation import Organisation
 from .risk_score import RiskScore
 from .team import Team
@@ -43,5 +44,7 @@ __all__ = [
     "SenioritySource",
     "CycleType",
     "CycleStatus",
+    "HumanReview",
+    "ReviewStatus",
     "Base",
 ]

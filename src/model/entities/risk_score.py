@@ -37,3 +37,6 @@ class RiskScore(Base, TimestampMixin):
     # Relations
     employee = relationship("Employee", back_populates="risk_scores")
     cycle = relationship("AssessmentCycle", back_populates="risk_scores")
+    human_review = relationship(
+        "HumanReview", back_populates="risk_score", uselist=False
+    )

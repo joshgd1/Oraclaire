@@ -99,3 +99,4 @@ class Employee(Base, TimestampMixin, OrganisationMixin):
     risk_scores = relationship("RiskScore", back_populates="employee")
     exclusions = relationship("Exclusion", back_populates="employee")
     withdrawals = relationship("Withdrawal", back_populates="employee")
+    human_reviews = relationship("HumanReview", back_populates="employee")

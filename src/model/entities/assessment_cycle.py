@@ -38,3 +38,4 @@ class AssessmentCycle(Base, TimestampMixin, OrganisationMixin):
     organisation = relationship("Organisation", back_populates="cycles")
     responses = relationship("AssessmentResponse", back_populates="cycle")
     risk_scores = relationship("RiskScore", back_populates="cycle")
+    human_reviews = relationship("HumanReview", back_populates="cycle")

@@ -5,10 +5,15 @@ GET /api/hr/trends          — org-wide risk distribution (hr_admin)
 GET /api/hr/exclusions      — exclusion counts by category (hr_admin)
 GET /api/hr/teams           — team-level aggregates (hr_admin, manager with team)
 GET /api/hr/participation   — participation rates by cycle (hr_admin)
+
+M6-08: Employee-first 24h visibility gate — risk distribution and team-level
+scores are withheld from HR until 24h after cycle close, giving employees
+the first window to view their own scores.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from starlette.requests import Request
@@ -30,6 +35,32 @@ from src.model.services.permission import (
     PermissionDenied,
     PermissionService,
 )
+
+# M6-08: employee-first visibility window
+_GATE_HOURS = 24
+
+
+def _is_gate_active(cycle) -> bool:
+    """Return True if the cycle is still within the 24h employee-first window."""
+    if cycle.closed_at is None:
+        return True
+    now = datetime.now(timezone.utc)
+    closed_utc = cycle.closed_at.replace(tzinfo=timezone.utc)
+    gate_end = closed_utc + timedelta(hours=_GATE_HOURS)
+    return now < gate_end
+
+
+def _gate_response_fields(cycle):
+    """Return visibility metadata for a cycle."""
+    closed = cycle.closed_at
+    if closed is None:
+        return {"visibility_locked": True, "visibility_locked_until": None}
+    closed_utc = closed.replace(tzinfo=timezone.utc)
+    locked_until = closed_utc + timedelta(hours=_GATE_HOURS)
+    return {
+        "visibility_locked": _is_gate_active(cycle),
+        "visibility_locked_until": locked_until.isoformat(),
+    }
 
 
 def _role_from_user(user: Any) -> Role:
@@ -69,7 +100,17 @@ async def get_trends(request: Request) -> JSONResponse:
         ).order_by(AssessmentCycle.closed_at.desc()).first()
 
         if not latest_cycle:
-            return JSONResponse({"trends": [], "cycle_id": None})
+            return JSONResponse({"trends": [], "cycle_id": None, "visibility_locked": False})
+
+        # M6-08: 24h employee-first gate — withhold risk distribution from HR
+        gate_fields = _gate_response_fields(latest_cycle)
+        if gate_fields["visibility_locked"]:
+            return JSONResponse({
+                "cycle_id": latest_cycle.id,
+                "total_scored": 0,
+                "tiers": {"low": 0, "moderate": 0, "high": 0, "critical": 0},
+                **gate_fields,
+            })
 
         scores = session.query(RiskScore).filter(
             RiskScore.cycle_id == latest_cycle.id
@@ -83,6 +124,7 @@ async def get_trends(request: Request) -> JSONResponse:
             "cycle_id": latest_cycle.id,
             "total_scored": len(scores),
             "tiers": tiers,
+            **gate_fields,
         })
     finally:
         session.close()
@@ -125,7 +167,7 @@ async def get_exclusions(request: Request) -> JSONResponse:
 
 
 async def get_teams(request: Request) -> JSONResponse:
-    """GET /api/hr/teams — team-level risk aggregates."""
+    """GET /api/hr/teams — team-level aggregates (gated 24h post-cycle-close)."""
     user = getattr(request.state, "user", None)
     if not user:
         return JSONResponse({"error": "unauthenticated"}, status_code=401)
@@ -148,18 +190,49 @@ async def get_teams(request: Request) -> JSONResponse:
     factory = get_session_factory()
     session = factory()
     try:
+        # Latest closed cycle for gate check
+        latest_cycle = session.query(AssessmentCycle).filter(
+            AssessmentCycle.organisation_id == org_id,
+            AssessmentCycle.status == "closed",
+        ).order_by(AssessmentCycle.closed_at.desc()).first()
+
+        gate_fields = _gate_response_fields(latest_cycle) if latest_cycle else {
+            "visibility_locked": True, "visibility_locked_until": None}
+
         teams = session.query(Team).filter(Team.organisation_id == org_id).all()
         result = []
         for team in teams:
-            # M4-09: suppress teams below minimum size from all views
             if team.member_count < MIN_TEAM_SIZE:
                 continue
-            result.append({
+            entry = {
                 "id": team.id,
                 "name": team.name,
                 "member_count": team.member_count,
-            })
-        return JSONResponse({"teams": result})
+            }
+            # M6-08: ORT data withheld until 24h employee-first window passes
+            if not gate_fields["visibility_locked"]:
+                hc_count = session.query(RiskScore).join(
+                    Employee, RiskScore.employee_id == Employee.id
+                ).filter(
+                    RiskScore.cycle_id == latest_cycle.id,
+                    RiskScore.risk_tier.in_(("high", "critical")),
+                    Employee.team_id == team.id,
+                    Employee.organisation_id == org_id,
+                    Employee.consent_status != "withdrawn",
+                    Employee.exclusion_status == False,  # noqa: E712
+                ).count()
+                total = session.query(Employee).filter(
+                    Employee.team_id == team.id,
+                    Employee.organisation_id == org_id,
+                    Employee.consent_status != "withdrawn",
+                    Employee.exclusion_status == False,  # noqa: E712
+                ).count()
+                hc_pct = round(hc_count / total, 4) if total > 0 else 0.0
+                entry["high_critical_pct"] = hc_pct
+                entry["consecutive_weeks_elevated"] = 0  # populated from org_risk endpoint
+            result.append(entry)
+
+        return JSONResponse({"teams": result, **gate_fields})
     finally:
         session.close()
 

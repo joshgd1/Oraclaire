@@ -249,6 +249,10 @@ def test_critical_held_in_queue(_use_test_paths):
         "missing_mfs": 0,
         "seniority_tier": 1,
         "tenure_days": 2000,
+        # Derived features: tenure_fatigue = tenure_days * mental_fatigue_score
+        #                tenure_workload = tenure_days * resource_allocation
+        "tenure_fatigue": 2000.0 * 9.0,
+        "tenure_workload": 2000.0 * 9.0,
     }
 
     mock_model = MagicMock()

@@ -25,6 +25,14 @@ from src.config import (
     TIER_ORDER,
 )
 from src.model.train import run as train_model
+from src.views.api_client import (
+    ApiError,
+    get_exclusions,
+    get_participation,
+    get_teams,
+    get_trends,
+    login,
+)
 from src.views.employee import render_employee_view
 from src.views.hr_aggregate import render_hr_view
 from src.views.reviewer import render_reviewer_view
@@ -90,65 +98,123 @@ def page_employee():
 
 
 def page_hr():
-    # Demo data from the 12-row clean dataset
+    token = st.session_state.get("auth_token")
+    if not token:
+        st.warning("Sign in to view the HR dashboard.")
+        return
+
+    try:
+        trends_data = get_trends(token)
+        teams_data = get_teams(token)
+        exclusions_data = get_exclusions(token)
+        participation_data = get_participation(token)
+    except ApiError as e:
+        st.error(f"Failed to load HR data: {e}")
+        return
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
+        return
+
+    # M6-08: 24h employee-first visibility gate
+    visibility_locked = trends_data.get("visibility_locked", False)
+    locked_until = trends_data.get("visibility_locked_until")
+    if visibility_locked:
+        st.info(
+            "📋 **Results pending** — Risk distribution and team-level scores are "
+            "hidden for 24 hours after cycle close to give employees first access "
+            + (f"to their own scores (unlocks at {locked_until})." if locked_until else "")
+        )
+
+    # Extract trends data
+    tiers = trends_data.get("tiers", {"low": 0, "moderate": 0, "high": 0, "critical": 0})
+    total_scored = trends_data.get("total_scored", 0)
     scores = [
-        {"risk_tier": "low", "burnout_probability": 0.12},
-        {"risk_tier": "low", "burnout_probability": 0.08},
-        {"risk_tier": "moderate", "burnout_probability": 0.25},
-        {"risk_tier": "moderate", "burnout_probability": 0.22},
-        {"risk_tier": "high", "burnout_probability": 0.45},
-        {"risk_tier": "high", "burnout_probability": 0.52},
-        {"risk_tier": "high", "burnout_probability": 0.38},
-        {"risk_tier": "low", "burnout_probability": 0.15},
-        {"risk_tier": "moderate", "burnout_probability": 0.28},
-        {"risk_tier": "low", "burnout_probability": 0.05},
-        {"risk_tier": "high", "burnout_probability": 0.61},
-        {"risk_tier": "low", "burnout_probability": 0.18},
+        {"risk_tier": tier, "burnout_probability": None}
+        for tier, count in tiers.items()
+        for _ in range(count)
     ]
 
+    # Extract teams data (may be empty if gate active)
     teams = [
-        {"name": "Engineering", "team_size": 8, "high_critical_pct": 0.25, "consecutive_weeks_elevated": 2},
-        {"name": "Product", "team_size": 4, "high_critical_pct": 0.0, "consecutive_weeks_elevated": 0},
-        {"name": "Marketing", "team_size": 6, "high_critical_pct": 0.17, "consecutive_weeks_elevated": 1},
+        {
+            "name": t["name"],
+            "team_size": t["member_count"],
+            "high_critical_pct": t.get("high_critical_pct", 0.0),
+            "consecutive_weeks_elevated": t.get("consecutive_weeks_elevated", 0),
+        }
+        for t in teams_data.get("teams", [])
     ]
 
+    # Extract exclusions
+    by_category = exclusions_data.get("by_category", {})
     exclusions = {
-        "on_leave": 2,
-        "protected_process": 1,
-        "grievance_cooldown": 1,
+        "on_leave": by_category.get("on_leave", 0),
+        "protected_process": by_category.get("protected_process", 0),
+        "grievance_cooldown": by_category.get("grievance_cooldown", 0),
     }
+
+    # Extract latest cycle participation
+    cycles = participation_data.get("cycles", [])
+    responded = 0
+    scoreable = 0
+    if cycles:
+        latest = cycles[0]
+        responded = latest.get("responded", 0)
+        scoreable = latest.get("total_eligible", 0)
 
     render_hr_view(
         scores=scores,
         teams=teams,
         exclusions=exclusions,
-        scoreable=12,
-        responded=8,
+        scoreable=scoreable,
+        responded=responded,
     )
 
 
-def page_reviewer():
-    reviews = [
-        {
-            "employee_id": "EID_007",
-            "probability": 0.82,
-            "shap_decomposition": [
-                {"feature": "tenure_days", "label": "Your time in this role", "impact_value": 0.35, "direction": "increases"},
-                {"feature": "mental_fatigue_score", "label": "Your recent energy levels", "impact_value": 0.28, "direction": "increases"},
-                {"feature": "resource_allocation", "label": "Your current workload demands", "impact_value": 0.19, "direction": "increases"},
-            ],
-            "scored_at": "2026-05-14T10:00:00Z",
-            "trajectory": "worsened",
-        },
-    ]
-
-    render_reviewer_view(reviews)
+def page_reviewer(token: str):
+    render_reviewer_view(token=token)
 
 
 def main():
     st.set_page_config(page_title="Oraclaire", page_icon=":brain:", layout="wide")
 
     ensure_model()
+
+    # Auth: simple employee-id login stored in session state
+    if "auth_token" not in st.session_state:
+        st.session_state.auth_token = None
+    if "auth_employee_id" not in st.session_state:
+        st.session_state.auth_employee_id = None
+    if "auth_role" not in st.session_state:
+        st.session_state.auth_role = None
+
+    with st.sidebar:
+        st.markdown("### Sign in")
+        login_emp_id = st.text_input(
+            "Employee ID",
+            value=st.session_state.auth_employee_id or "",
+            placeholder="Enter your employee ID",
+            key="login_emp_id_input",
+        )
+        if st.button("Sign in", key="sign_in_btn"):
+            if login_emp_id.strip():
+                try:
+                    auth_data = login(login_emp_id.strip())
+                    st.session_state.auth_token = auth_data["token"]
+                    st.session_state.auth_employee_id = login_emp_id.strip()
+                    st.session_state.auth_role = auth_data.get("role", "")
+                    st.rerun()
+                except ApiError as e:
+                    st.error(str(e))
+                except Exception as e:
+                    st.error(f"Login error: {e}")
+        if st.session_state.auth_token:
+            st.success(f"Signed in as {st.session_state.auth_employee_id} ({st.session_state.auth_role})")
+            if st.button("Sign out", key="sign_out_btn"):
+                st.session_state.auth_token = None
+                st.session_state.auth_employee_id = None
+                st.session_state.auth_role = None
+                st.rerun()
 
     page = st.sidebar.selectbox(
         "View",
@@ -160,7 +226,10 @@ def main():
     elif page == "HR Aggregate":
         page_hr()
     elif page == "Reviewer":
-        page_reviewer()
+        if not st.session_state.auth_token:
+            st.warning("Sign in with your Employee ID to access the reviewer queue.")
+            return
+        page_reviewer(st.session_state.auth_token)
 
 
 if __name__ == "__main__":
