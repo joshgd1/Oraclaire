@@ -72,6 +72,7 @@ def _register_endpoints(app: Nexus) -> None:
         employee,
         health,
         hr_aggregate,
+        notifications,
         pulse,
         scoring,
     )
@@ -82,6 +83,7 @@ def _register_endpoints(app: Nexus) -> None:
     app.include_router(assessment_cycle.router, prefix="/api/cycle")
     app.include_router(hr_aggregate.router, prefix="/api/hr")
     app.include_router(scoring.router, prefix="/api/scoring")
+    app.include_router(notifications.router, prefix="/api/notifications")
 
     # Health — no auth required (exempt in JWTConfig)
     app.register_endpoint("/health", ["GET"], health.health_check)

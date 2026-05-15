@@ -39,6 +39,7 @@ class AlertRecord(BaseModel):
     alert_type: str = "CRITICAL_CEILING_EXCEEDED"
     critical_fraction: float
     ceiling: float = 0.05
+    participation_rate: float | None = None  # only for PARTICIPATION_DROP
     affected_count: int
     total_count: int
     timestamp: str
@@ -89,6 +90,8 @@ def write_alert(
     affected_count: int,
     total_count: int,
     ceiling: float = 0.05,
+    participation_rate: float | None = None,
+    alert_type: str = "CRITICAL_CEILING_EXCEEDED",
 ) -> str:
     """Write an alert record; returns the generated alert_id."""
     alert_id = str(uuid.uuid4())
@@ -96,8 +99,10 @@ def write_alert(
         alert_id=alert_id,
         cycle_id=cycle_id,
         organisation_id=organisation_id,
+        alert_type=alert_type,
         critical_fraction=critical_fraction,
         ceiling=ceiling,
+        participation_rate=participation_rate,
         affected_count=affected_count,
         total_count=total_count,
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -139,6 +144,7 @@ def write_acknowledgment(
                     alert_type=rec.alert_type,
                     critical_fraction=rec.critical_fraction,
                     ceiling=rec.ceiling,
+                    participation_rate=rec.participation_rate,
                     affected_count=rec.affected_count,
                     total_count=rec.total_count,
                     timestamp=rec.timestamp,

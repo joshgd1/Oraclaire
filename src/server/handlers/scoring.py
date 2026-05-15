@@ -14,9 +14,10 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.model.entities import AssessmentCycle, Employee, Role, RiskScore
+from src.model.entities import AssessmentCycle, Employee, Role, RiskScore, Team
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import Action, PermissionDenied, PermissionService
+from src.config import MIN_TEAM_SIZE
 from src.audit.alerts import (
     get_active_alerts,
     get_alert_by_id,
@@ -113,7 +114,7 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
     """
     from src.config import THRESHOLD_A, THRESHOLD_B, TIER_BOUNDARIES
     from src.config import MODEL_ARTIFACT_PATH
-    from src.model.services.cycle_health import check_critical_ceiling
+    from src.model.services.cycle_health import check_critical_ceiling, check_participation_floor
     import joblib
     from pathlib import Path
     import structlog
@@ -130,11 +131,18 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
     factory = get_session_factory()
     session = factory()
     try:
-        employees = session.query(Employee).filter(
-            Employee.organisation_id == organisation_id,
-            Employee.consent_status != "withdrawn",
-            Employee.exclusion_status == False,  # noqa: E712
-        ).all()
+        # M4-09: exclude employees in teams below minimum team size
+        employees = (
+            session.query(Employee)
+            .join(Team, Employee.team_id == Team.id)
+            .filter(
+                Employee.organisation_id == organisation_id,
+                Employee.consent_status != "withdrawn",
+                Employee.exclusion_status == False,  # noqa: E712
+                Team.member_count >= MIN_TEAM_SIZE,
+            )
+            .all()
+        )
 
         scored_at = datetime.now(timezone.utc)
 
@@ -183,6 +191,43 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                 cycle_id=cycle_id,
                 error=str(exc),
             )
+
+        # M4-08: check participation floor after scoring commits
+        try:
+            alert_id = check_participation_floor(cycle_id, organisation_id)
+            if alert_id:
+                logger.info(
+                    "scoring.participation_alert.fired",
+                    cycle_id=cycle_id,
+                    alert_id=alert_id,
+                )
+        except Exception as exc:
+            logger.error(
+                "scoring.participation_alert.failed",
+                cycle_id=cycle_id,
+                error=str(exc),
+            )
+
+        # M4-10: notify employees their scores are viewable (post 24h employee-first gate)
+        try:
+            from src.model.services.notification import notify_score_viewable
+            scored_employee_ids = [emp.id for emp in employees]
+            notify_score_viewable(
+                cycle_id=cycle_id,
+                organisation_id=organisation_id,
+                employee_ids=scored_employee_ids,
+            )
+            logger.info(
+                "scoring.notifications.sent",
+                cycle_id=cycle_id,
+                count=len(scored_employee_ids),
+            )
+        except Exception as exc:
+            logger.error(
+                "scoring.notifications.failed",
+                cycle_id=cycle_id,
+                error=str(exc),
+            )
     except Exception as exc:
         logger.exception("scoring.failed", cycle_id=cycle_id, error=str(exc))
         session.rollback()
@@ -226,6 +271,7 @@ async def list_alerts(request: Request) -> JSONResponse:
                 "alert_type": a.alert_type,
                 "critical_fraction": a.critical_fraction,
                 "ceiling": a.ceiling,
+                "participation_rate": a.participation_rate,
                 "affected_count": a.affected_count,
                 "total_count": a.total_count,
                 "timestamp": a.timestamp,

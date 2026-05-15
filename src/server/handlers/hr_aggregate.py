@@ -24,6 +24,7 @@ from src.model.entities import (
     Team,
 )
 from src.model.entities._db import get_session_factory
+from src.config import MIN_TEAM_SIZE
 from src.model.services.permission import (
     Action,
     PermissionDenied,
@@ -150,8 +151,8 @@ async def get_teams(request: Request) -> JSONResponse:
         teams = session.query(Team).filter(Team.organisation_id == org_id).all()
         result = []
         for team in teams:
-            # Skip small teams for manager view
-            if role == Role.MANAGER and team.member_count < 5:
+            # M4-09: suppress teams below minimum size from all views
+            if team.member_count < MIN_TEAM_SIZE:
                 continue
             result.append({
                 "id": team.id,

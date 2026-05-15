@@ -108,13 +108,60 @@ async def create_cycle(request: Request) -> JSONResponse:
         # M2-07: sync HRIS exclusions and apply to employee records (M1-10)
         exclusion_result = _sync_exclusions_on_cycle_start(org_id)
 
+        # M4-10: notify eligible employees that a new cycle has opened
+        try:
+            notification_result = _notify_eligible_employees(
+                cycle.id, org_id, cycle.cycle_type.value
+            )
+        except Exception:
+            notification_result = {"error": "notification dispatch failed"}
+
         return JSONResponse({
             "id": cycle.id,
             "cycle_type": cycle.cycle_type.value,
             "status": cycle.status.value,
             "started_at": cycle.started_at.isoformat(),
             "exclusion_sync": exclusion_result,
+            "notifications": notification_result,
         }, status_code=201)
+    finally:
+        session.close()
+
+
+def _notify_eligible_employees(cycle_id: int, organisation_id: int, cycle_type: str) -> dict:
+    """
+    M4-10: Notify all eligible employees when a new cycle opens.
+
+    Eligible: consented, not withdrawn, not excluded.
+    Consent-aware: withdrawn employees are excluded.
+    No score content in the notification.
+    """
+    from src.model.entities import Employee, Team, ConsentStatus
+    from src.model.services.notification import notify_cycle_opened
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        eligible = (
+            session.query(Employee.id)
+            .join(Team, Employee.team_id == Team.id)
+            .filter(
+                Employee.organisation_id == organisation_id,
+                Employee.consent_status == ConsentStatus.CONSENTED,
+                Employee.exclusion_status == False,  # noqa: E712
+                Team.member_count >= 5,
+            )
+            .all()
+        )
+        employee_ids = [e.id for e in eligible]
+        if employee_ids:
+            notify_cycle_opened(
+                cycle_id=cycle_id,
+                organisation_id=organisation_id,
+                cycle_type=cycle_type,
+                employee_ids=employee_ids,
+            )
+        return {"notified_count": len(employee_ids)}
     finally:
         session.close()
 
@@ -416,6 +463,114 @@ async def _update_participation(cycle_id: int, organisation_id: int) -> None:
         log.warning("participation_update_failed", cycle_id=cycle_id)
 
 
+async def send_midpoint_reminder(request: Request) -> JSONResponse:
+    """
+    POST /api/cycle/{id}/remind — send midpoint reminder to non-respondents.
+
+    M4-10: HR admin can trigger this manually, or a scheduled job calls it
+    at the cycle midpoint (~3.5 days into a 7-day cycle).
+    Only employees who have not submitted a response are notified.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    path_parts = request.url.path.strip("/").split("/")
+    try:
+        cycle_id = int(path_parts[1])
+    except (ValueError, IndexError):
+        return JSONResponse({"error": "invalid cycle id"}, status_code=400)
+
+    org_id = getattr(user, "tenant_id", None)
+    role = _require_role(user)
+    svc = PermissionService(get_session_factory()())
+    try:
+        svc.check(viewer_id=user.user_id, viewer_role=role,
+                   action=Action.MANAGE_CYCLE, target_org_id=org_id)
+    except PermissionDenied as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        cycle = session.query(AssessmentCycle).filter(
+            AssessmentCycle.id == cycle_id,
+            AssessmentCycle.organisation_id == org_id,
+        ).first()
+        if not cycle:
+            return JSONResponse({"error": "cycle not found"}, status_code=404)
+        if cycle.status != CycleStatus.OPEN:
+            return JSONResponse({"error": "cycle is not open"}, status_code=409)
+    finally:
+        session.close()
+
+    # Identify non-respondents
+    from src.model.entities import AssessmentResponse, Employee, Team, ConsentStatus
+    try:
+        result = _send_midpoint_reminder(cycle_id, org_id, cycle.cycle_type.value)
+        return JSONResponse(result)
+    except Exception as exc:
+        import structlog
+        structlog.get_logger().error("midpoint_reminder.failed", cycle_id=cycle_id, error=str(exc))
+        return JSONResponse({"error": "reminder dispatch failed"}, status_code=500)
+
+
+def _send_midpoint_reminder(cycle_id: int, organisation_id: int, cycle_type: str) -> dict:
+    """
+    M4-10: Send midpoint reminders to employees who haven't responded.
+
+    Called by the reminder endpoint handler. Identifies eligible non-respondents
+    and sends notifications.
+    """
+    from src.model.entities import AssessmentResponse, Employee, Team, ConsentStatus
+    from src.model.services.notification import notify_midpoint_reminder
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        # Eligible employees: consented, not excluded, in sufficiently-sized team
+        eligible = (
+            session.query(Employee.id)
+            .join(Team, Employee.team_id == Team.id)
+            .filter(
+                Employee.organisation_id == organisation_id,
+                Employee.consent_status == ConsentStatus.CONSENTED,
+                Employee.exclusion_status == False,  # noqa: E712
+                Team.member_count >= 5,
+            )
+            .all()
+        )
+        eligible_ids = {e.id for e in eligible}
+
+        # Employees who have submitted at least one response
+        responded = (
+            session.query(AssessmentResponse.employee_id)
+            .filter(
+                AssessmentResponse.cycle_id == cycle_id,
+                AssessmentResponse.submitted_at.isnot(None),
+            )
+            .distinct()
+            .all()
+        )
+        responded_ids = {r[0] for r in responded}
+
+        # Non-respondents: eligible but haven't submitted
+        non_respondent_ids = list(eligible_ids - responded_ids)
+
+        if non_respondent_ids:
+            notify_midpoint_reminder(
+                cycle_id=cycle_id,
+                organisation_id=organisation_id,
+                cycle_type=cycle_type,
+                employee_ids=non_respondent_ids,
+                cycle_started_at=datetime.now(timezone.utc),
+            )
+
+        return {"reminder_sent_count": len(non_respondent_ids)}
+    finally:
+        session.close()
+
+
 # Router — FastAPI APIRouter
 from fastapi import APIRouter
 
@@ -425,3 +580,4 @@ router.add_api_route("/", create_cycle, methods=["POST"])
 router.add_api_route("/{id}/close", close_cycle, methods=["POST"])
 router.add_api_route("/{id}/response", submit_cycle_response, methods=["POST"])
 router.add_api_route("/{id}/submit", submit_cycle, methods=["POST"])
+router.add_api_route("/{id}/remind", send_midpoint_reminder, methods=["POST"])
