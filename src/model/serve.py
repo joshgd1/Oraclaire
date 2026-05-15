@@ -48,11 +48,14 @@ def _validate_features(input_data: dict) -> pd.DataFrame:
     return pd.DataFrame(row)
 
 
-def _shap_explain(model, X: pd.DataFrame, n_top: int = 3) -> list[dict]:
+def _shap_explain(model, X: pd.DataFrame, n_top: int | None = None) -> list[dict]:
     """Generate SHAP decomposition for one prediction.
 
     Returns list of {feature, impact_value, direction, label} sorted by
     absolute impact descending. Feature labels from config.FEATURE_LABELS.
+
+    D30 decision: all 8 features shown. Top 3 get directional labels
+    ("increases"/"decreases"); remaining features get "neutral".
     """
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X)
@@ -71,15 +74,23 @@ def _shap_explain(model, X: pd.DataFrame, n_top: int = 3) -> list[dict]:
         reverse=True,
     )
 
+    # n_top=None means show all features
+    slice_len = n_top if n_top is not None else len(ranked)
+
     result = []
-    for feat, impact in ranked[:n_top]:
+    for idx, (feat, impact) in enumerate(ranked[:slice_len]):
         label = FEATURE_LABELS.get(feat)
         if label is None:
             continue
+        # Top-3 get directional; 4-8 get neutral per D30
+        if idx < 3:
+            direction = "increases" if impact > 0 else "decreases"
+        else:
+            direction = "neutral"
         result.append({
             "feature": feat,
             "impact_value": round(float(impact), 4),
-            "direction": "increases" if impact > 0 else "decreases",
+            "direction": direction,
             "label": label,
         })
     return result

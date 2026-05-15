@@ -5,6 +5,19 @@ All configurable values in one place. No magic numbers elsewhere.
 Update threshold values here when full dataset re-run completes.
 """
 
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ── Database ───────────────────────────────────────────────────────────────────
+# SQLite for local dev; swap to postgresql://... for production via DATABASE_URL env var.
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "sqlite:///./oraclaire.db",
+)
+
 # ── Model ──────────────────────────────────────────────────────────────────────
 
 MODEL_PARAMS = {
@@ -58,6 +71,10 @@ TIER_BOUNDARIES = {
     "high": (0.30, 0.90),
     "critical": (0.90, 1.00),
 }
+
+# C3a model health ceiling — fraction of CRITICAL-tier employees above which
+# a Product Owner must acknowledge before the next cycle can open.
+CRITICAL_HEALTH_CEILING = 0.05
 
 TIER_COLORS = {
     "low": "#22c55e",       # green

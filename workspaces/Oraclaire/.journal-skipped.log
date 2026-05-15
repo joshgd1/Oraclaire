@@ -16,3 +16,48 @@
 2026-05-14T12:33:59.164Z <journal-skip>commit=1d11f11ada41 reason=coc-housekeeping subject="chore(coc): land /sync-to-build delivery"</journal-skip>
 2026-05-14T12:55:43.876Z <journal-skip>commit=3ea0c7df0c5f reason=merge-commit subject="Merge pull request #3 from joshgd1/chore/coc-sync-2025-05-14-product-knowledge"</journal-skip>
 2026-05-14T12:55:43.876Z <journal-skip>commit=1d11f11ada41 reason=coc-housekeeping subject="chore(coc): land /sync-to-build delivery"</journal-skip>
+2026-05-14T15:39:04.779Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=3ea0c7df0c5f reason=merge-commit subject="Merge pull request #3 from joshgd1/chore/coc-sync-2025-05-14-product-knowledge"</journal-skip>
+2026-05-14T15:39:04.780Z <journal-skip>commit=1d11f11ada41 reason=coc-housekeeping subject="chore(coc): land /sync-to-build delivery"</journal-skip>
+2026-05-14T16:09:45.026Z <journal-skip>commit=79735af4d606 reason=merge-commit subject="Merge pull request #4 from joshgd1/chore/coc-sync-2026-05-14"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=f7e22cf7b68b reason=chore-routine subject="chore(coc): land updated oraclaire-product-knowledge agent"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=3ea0c7df0c5f reason=merge-commit subject="Merge pull request #3 from joshgd1/chore/coc-sync-2025-05-14-product-knowledge"</journal-skip>
+2026-05-14T16:09:45.027Z <journal-skip>commit=1d11f11ada41 reason=coc-housekeeping subject="chore(coc): land /sync-to-build delivery"</journal-skip>
+2026-05-14T16:48:15.752Z <journal-skip>commit=79735af4d606 reason=merge-commit subject="Merge pull request #4 from joshgd1/chore/coc-sync-2026-05-14"</journal-skip>
+2026-05-14T16:48:15.753Z <journal-skip>commit=f7e22cf7b68b reason=chore-routine subject="chore(coc): land updated oraclaire-product-knowledge agent"</journal-skip>
+2026-05-14T16:48:15.754Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T16:48:15.754Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T16:48:15.754Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T16:48:15.754Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T16:48:15.754Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-14T16:49:05.569Z <journal-skip>commit=79735af4d606 reason=merge-commit subject="Merge pull request #4 from joshgd1/chore/coc-sync-2026-05-14"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=f7e22cf7b68b reason=chore-routine subject="chore(coc): land updated oraclaire-product-knowledge agent"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T16:49:05.570Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-14T16:49:15.163Z <journal-skip>commit=79735af4d606 reason=merge-commit subject="Merge pull request #4 from joshgd1/chore/coc-sync-2026-05-14"</journal-skip>
+2026-05-14T16:49:15.163Z <journal-skip>commit=f7e22cf7b68b reason=chore-routine subject="chore(coc): land updated oraclaire-product-knowledge agent"</journal-skip>
+2026-05-14T16:49:15.164Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T16:49:15.164Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T16:49:15.164Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T16:49:15.164Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T16:49:15.164Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-14T17:11:55.458Z <journal-skip>commit=79735af4d606 reason=merge-commit subject="Merge pull request #4 from joshgd1/chore/coc-sync-2026-05-14"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=f7e22cf7b68b reason=chore-routine subject="chore(coc): land updated oraclaire-product-knowledge agent"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=3e0da4f9e68b reason=feat-no-novel-body subject="feat(phase10-11): objective function and constraints"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=defa5e359ee7 reason=docs-routine subject="docs: customer deployment checklist — operationalises D27 GO conditions"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=5ebcf8a85f81 reason=feat-no-novel-body subject="feat(phase8): deployment gate GO"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=f00cf6abef1e reason=feat-no-novel-body subject="feat(phase7): red-team complete — model corrected, threshold locked"</journal-skip>
+2026-05-14T17:11:55.459Z <journal-skip>commit=d30b4f8b0d92 reason=feat-no-novel-body subject="feat(sprint1): complete Oraclaire burnout risk scorer"</journal-skip>
+2026-05-15T12:31:11.055Z <journal-skip>commit=97bde0317d35 reason=docs-routine subject="docs: DPO review package — unblocks D27 Condition 1"</journal-skip>

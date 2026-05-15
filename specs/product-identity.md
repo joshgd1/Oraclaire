@@ -87,11 +87,19 @@ Random Forest + SHAP is the Sprint 1 model, confirmed via Phase 5 model selectio
 
 **Sprint 1 hyperparameters:** n_estimators=100, max_depth=5, random_state=42.
 
-**Provisional threshold:** 0.30 with ±0.05 drift tolerance (pre-registered in D17).
+**Locked threshold (D26):** THRESHOLD_A = 0.35 (general population). Originally 0.30 provisional; raised after Phase 7 RE-DO (D24-D26) reduced FP from 20.1% to 16.6%. THRESHOLD_B = 0.30 (senior tier, provisional — requires HRIS validation in Sprint 2). Drift range: (0.30, 0.40).
 
-**Feature set:** 8 active features after Designation multicollinearity drop (r=0.8865 with seniority_tier). See `workspaces/Oraclaire/journal/phase_3_features.md` for the full feature classification.
+**Feature set (10 features after RE-DO, D24):** 8 original features after Designation multicollinearity drop (r=0.8865 with seniority_tier) + 2 interaction terms (`tenure_fatigue`, `tenure_workload`) added in Phase 7 RE-DO to reduce MFS SHAP dominance from 46.9% to 29.9%. See `workspaces/Oraclaire/journal/phase_3_features.md` for the full feature classification.
 
-**DPO hard gate:** SHAP output format must be reviewed by a qualified legal/DPO professional before first customer deployment (D17).
+**Critical boundary:** 0.90 (raised from 0.75 in D24 to meet the 5% Critical population cap).
+
+**MFS SHAP post-RE-DO:** 29.9% — below the 40% gate (D16).
+
+**FP rate at 0.35:** 16.6% — 1.6pp above the pre-registered 15% ceiling, accepted within the 5-point buffer to the 20% participation decay threshold (D26).
+
+**DPO hard gate:** SHAP output format must be reviewed by a qualified legal/DPO professional before first customer deployment (D17, D27 Condition 1). Employee UI locked until sign-off.
+
+**Deployment status:** GO (D27) with four conditions: DPO sign-off, pilot-only, no performance claims, Sprint 2 items communicated.
 
 **Sprint 2 re-entry:** XGBoost re-enters candidate pool on expanded behavioral feature layer (D16b), MFS SHAP must be below 40%.
 
@@ -178,17 +186,22 @@ Without HRIS integration, these features require manual enforcement, which intro
 
 ## 7. Parameters Locked by D14/D15
 
-| Parameter             | Value                                               | Decision           |
-| --------------------- | --------------------------------------------------- | ------------------ |
-| Inter-cycle window    | 30 days (monthly CBI + weekly pulse)                | D14 (journal/0013) |
-| Auto-flag ceiling     | 20% High+Critical combined                          | D14-10, D15-2      |
-| Auto-flag trigger     | 2 consecutive weekly pulses or single quarterly CBI | D15-2              |
-| Participation targets | 20% Sprint 1, 40% architectural                     | D7, D14            |
-| Model family          | Random Forest + SHAP (Sprint 1, confirmed D17)      | D16, D17           |
-| Risk tiers            | Low / Moderate / High / Critical                    | Pre-selected       |
-| Provisional threshold | 0.30 (drift tolerance ±0.05)                        | D17                |
-| Two-threshold serving | A: general FN 15%/FP 15%; B: senior FN 10%/FP 20%   | D11, D14           |
-| Feature set           | 8 active (Designation dropped, r=0.8865)            | Phase 3, Phase 4   |
+| Parameter                 | Value                                                     | Decision              |
+| ------------------------- | --------------------------------------------------------- | --------------------- |
+| Inter-cycle window        | 30 days (monthly CBI + weekly pulse)                      | D14 (journal/0013)    |
+| Auto-flag ceiling         | 20% High+Critical combined                                | D14-10, D15-2         |
+| Auto-flag trigger         | 2 consecutive weekly pulses or single quarterly CBI       | D15-2                 |
+| Participation targets     | 20% Sprint 1, 40% architectural                           | D7, D14               |
+| Model family              | Random Forest + SHAP (Sprint 1, confirmed D17)            | D16, D17              |
+| Risk tiers                | Low / Moderate / High / Critical                          | Pre-selected          |
+| Threshold A (locked)      | 0.35 (drift range 0.30–0.40)                              | D26                   |
+| Threshold B (provisional) | 0.30 (senior tier, requires HRIS validation)              | D17, D26              |
+| Critical boundary         | 0.90 (raised from 0.75 in D24)                            | D24                   |
+| Two-threshold serving     | A: general FN 15%/FP 15%; B: senior FN 10%/FP 20%         | D11, D14              |
+| Feature set               | 10 active (8 original + tenure_fatigue + tenure_workload) | Phase 3, Phase 4, D24 |
+| MFS SHAP dominance        | 29.9% (below 40% gate)                                    | D24 RE-DO             |
+| FP rate at 0.35           | 16.6% (1.6pp above ceiling, accepted within decay buffer) | D26                   |
+| Deployment status         | GO with four conditions (D27)                             | D27                   |
 
 ## 8. Open Questions Remaining
 
