@@ -2,7 +2,9 @@
 
 **Phase:** /todos (Phase 2)
 **Date:** 2026-05-13
-**Status:** PENDING HUMAN APPROVAL
+**Status:** APPROVED 2026-05-15
+
+M1 (Foundation) + M2 (Nexus backend) — COMPLETED in commit 5e33d85.
 **Decisions locked:** D1–D15
 **Model:** Autonomous execution (all estimates in sessions, not human-days)
 **Red-teamed:** 2026-05-13 — 3 CRITICAL, 6 HIGH, 8 MEDIUM findings incorporated
