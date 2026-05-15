@@ -72,10 +72,12 @@ def _register_endpoints(app: Nexus) -> None:
         employee,
         health,
         hr_aggregate,
+        pulse,
         scoring,
     )
 
     app.include_router(auth.router, prefix="/api")
+    app.include_router(pulse.router, prefix="/api/pulse")
     app.include_router(employee.router, prefix="/api/employee")
     app.include_router(assessment_cycle.router, prefix="/api/cycle")
     app.include_router(hr_aggregate.router, prefix="/api/hr")

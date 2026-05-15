@@ -239,6 +239,183 @@ async def close_cycle(request: Request) -> JSONResponse:
         session.close()
 
 
+async def submit_cycle_response(request: Request) -> JSONResponse:
+    """
+    POST /api/cycle/{id}/response — store one or more item responses for the
+    authenticated employee on this cycle.
+
+    Body: {
+        "responses": [{"item_index": int, "response_value": float}, ...]
+    }
+
+    item_index: 0-18 for CBI (19 items), 0 for pulse (single item)
+    response_value: float in [0.0, 6.0]
+
+    Uses upsert: updates existing row if (cycle_id, employee_id, item_index)
+    already exists (supports save-on-each-response for partial completion).
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    path_parts = request.url.path.strip("/").split("/")
+    try:
+        cycle_id = int(path_parts[1])  # /api/cycle/{id}/response
+    except (ValueError, IndexError):
+        return JSONResponse({"error": "invalid cycle id"}, status_code=400)
+
+    org_id = getattr(user, "tenant_id", None)
+    employee_id = int(user.user_id)
+
+    body = await request.json()
+    responses = body.get("responses", [])
+    if not isinstance(responses, list) or not responses:
+        return JSONResponse({"error": "responses must be a non-empty list"}, status_code=400)
+
+    role = _require_role(user)
+    svc = PermissionService(get_session_factory()())
+    try:
+        svc.check(viewer_id=user.user_id, viewer_role=role,
+                   action=Action.SUBMIT_ASSESSMENT_RESPONSE,
+                   target_employee_id=employee_id)
+    except PermissionDenied as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        cycle = session.query(AssessmentCycle).filter(
+            AssessmentCycle.id == cycle_id
+        ).first()
+        if not cycle:
+            return JSONResponse({"error": "cycle not found"}, status_code=404)
+        if cycle.status != CycleStatus.OPEN:
+            return JSONResponse({"error": "cycle is not open"}, status_code=409)
+        if cycle.organisation_id != org_id:
+            return JSONResponse({"error": "cycle not in your organisation"}, status_code=403)
+
+        from src.model.entities import AssessmentResponse
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        stored = 0
+        for item in responses:
+            if not isinstance(item, dict):
+                return JSONResponse({"error": "each response must be an object"}, status_code=400)
+            item_index = item.get("item_index")
+            response_value = item.get("response_value")
+            if not isinstance(item_index, int) or not isinstance(response_value, (int, float)):
+                return JSONResponse({"error": "item_index must be int, response_value must be numeric"}, status_code=400)
+            if response_value < 0.0 or response_value > 6.0:
+                return JSONResponse(
+                    {"error": f"response_value must be in [0.0, 6.0], got {response_value}"},
+                    status_code=400,
+                )
+
+            # Upsert: update if exists, insert if not
+            stmt = sqlite_insert(AssessmentResponse).values(
+                cycle_id=cycle_id,
+                employee_id=employee_id,
+                item_index=item_index,
+                response_value=float(response_value),
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["cycle_id", "employee_id", "item_index"],
+                set_={"response_value": float(response_value)},
+            )
+            session.execute(stmt)
+            stored += 1
+
+        session.commit()
+
+        return JSONResponse({
+            "cycle_id": cycle_id,
+            "employee_id": employee_id,
+            "items_stored": stored,
+        })
+    finally:
+        session.close()
+
+
+async def submit_cycle(request: Request) -> JSONResponse:
+    """
+    POST /api/cycle/{id}/submit — mark all responses for this employee on
+    this cycle as submitted. Called when the employee completes their assessment.
+
+    Triggers participation tracking update.
+    """
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    path_parts = request.url.path.strip("/").split("/")
+    try:
+        cycle_id = int(path_parts[1])  # /api/cycle/{id}/submit
+    except (ValueError, IndexError):
+        return JSONResponse({"error": "invalid cycle id"}, status_code=400)
+
+    org_id = getattr(user, "tenant_id", None)
+    employee_id = int(user.user_id)
+
+    role = _require_role(user)
+    svc = PermissionService(get_session_factory()())
+    try:
+        svc.check(viewer_id=user.user_id, viewer_role=role,
+                   action=Action.SUBMIT_ASSESSMENT_RESPONSE,
+                   target_employee_id=employee_id)
+    except PermissionDenied as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        cycle = session.query(AssessmentCycle).filter(
+            AssessmentCycle.id == cycle_id
+        ).first()
+        if not cycle:
+            return JSONResponse({"error": "cycle not found"}, status_code=404)
+        if cycle.status != CycleStatus.OPEN:
+            return JSONResponse({"error": "cycle is not open"}, status_code=409)
+        if cycle.organisation_id != org_id:
+            return JSONResponse({"error": "cycle not in your organisation"}, status_code=403)
+
+        from src.model.entities import AssessmentResponse
+        from datetime import timezone
+
+        # Mark all unsubmitted responses for this employee/cycle as submitted
+        updated = session.query(AssessmentResponse).filter(
+            AssessmentResponse.cycle_id == cycle_id,
+            AssessmentResponse.employee_id == employee_id,
+            AssessmentResponse.submitted_at.is_(None),
+        ).update(
+            {"submitted_at": datetime.now(timezone.utc)},
+            synchronize_session=False,
+        )
+        session.commit()
+
+        # M4-07: update participation tracking (fire-and-forget)
+        asyncio.create_task(_update_participation(cycle_id, org_id))
+
+        return JSONResponse({
+            "cycle_id": cycle_id,
+            "employee_id": employee_id,
+            "responses_submitted": updated,
+        })
+    finally:
+        session.close()
+
+
+async def _update_participation(cycle_id: int, organisation_id: int) -> None:
+    """M4-07: Update participation tracking after a response submission."""
+    try:
+        from src.model.services.participation import update_participation_for_cycle
+        update_participation_for_cycle(cycle_id, organisation_id)
+    except Exception:
+        # Fire-and-forget: participation tracking errors do not block the submit
+        import structlog
+        log = structlog.get_logger()
+        log.warning("participation_update_failed", cycle_id=cycle_id)
+
+
 # Router — FastAPI APIRouter
 from fastapi import APIRouter
 
@@ -246,3 +423,5 @@ router = APIRouter()
 router.add_api_route("/", list_cycles, methods=["GET"])
 router.add_api_route("/", create_cycle, methods=["POST"])
 router.add_api_route("/{id}/close", close_cycle, methods=["POST"])
+router.add_api_route("/{id}/response", submit_cycle_response, methods=["POST"])
+router.add_api_route("/{id}/submit", submit_cycle, methods=["POST"])

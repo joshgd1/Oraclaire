@@ -203,6 +203,13 @@ async def get_my_shap(request: Request) -> JSONResponse:
         session.close()
 
 
+# M4-06: GET /api/employee/{id}/pulse-trend — delegated to pulse.py
+async def get_employee_pulse_trend(request: Request) -> JSONResponse:
+    """GET /api/employee/{id}/pulse-trend — forward to pulse module."""
+    from src.server.handlers.pulse import get_pulse_trend as _trend
+    return await _trend(request)
+
+
 # Router — FastAPI APIRouter
 from fastapi import APIRouter
 
@@ -212,3 +219,4 @@ router.add_api_route("/me", get_me, methods=["GET"])
 router.add_api_route("/me", update_me, methods=["PATCH"])
 router.add_api_route("/me/scores", get_my_scores, methods=["GET"])
 router.add_api_route("/me/shap", get_my_shap, methods=["GET"])
+router.add_api_route("/{id}/pulse-trend", get_employee_pulse_trend, methods=["GET"])

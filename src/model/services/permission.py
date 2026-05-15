@@ -45,6 +45,7 @@ class Action(Enum):
     APPROVE_REVIEW = "approve_review"
     OVERRIDE_REVIEW = "override_review"
     MANAGE_CYCLE = "manage_cycle"
+    SUBMIT_ASSESSMENT_RESPONSE = "submit_assessment_response"
     READ_HEALTH_ALERTS = "read_health_alerts"
     ACKNOWLEDGE_HEALTH_ALERT = "acknowledge_health_alert"
 
@@ -192,6 +193,7 @@ class PermissionService:
                     Action.READ_EMPLOYEE_DATA,
                     Action.UPDATE_EMPLOYEE_DATA,
                     Action.DELETE_EMPLOYEE_DATA,
+                    Action.SUBMIT_ASSESSMENT_RESPONSE,
                 )
             return False
         # Team-level for own team context (employees don't read team aggregates
