@@ -269,76 +269,115 @@ def ensure_model():
 
 def page_landing():
     """Welcome landing page shown when not logged in and no demo started."""
+    # ── Hero ───────────────────────────────────────────────────────────────
     st.markdown(
-        f'<div style="text-align:center;padding:60px 20px">'
-        f'<h1 style="font-size:2.5rem;font-weight:800;color:{THEME["text"]};margin-bottom:16px">'
+        f'<h1 style="text-align:center;font-size:2.4rem;font-weight:800;'
+        f'color:{THEME["text"]};margin-bottom:12px;letter-spacing:-0.02em">'
         f'How are you really doing?</h1>'
-        f'<p style="font-size:1.15rem;color:{THEME["text_secondary"]};max-width:500px;margin:0 auto 40px">'
+        f'<p style="text-align:center;font-size:1.1rem;color:{THEME["text_secondary"]};'
+        f'max-width:520px;margin:0 auto 48px;line-height:1.7">'
         f'Oraclaire helps teams understand and address burnout risk — '
-        f'privately, collaboratively, and early.</p></div>',
+        f'privately, collaboratively, and early.</p>',
         unsafe_allow_html=True,
     )
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(
-            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
-            f'border-radius:14px;border:1px solid {THEME["border"]}">'
-            f'<div style="font-size:2rem;margin-bottom:12px">🔒</div>'
-            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Private</h3>'
-            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
-            f'Individual results are never shared without consent.</p></div>',
-            unsafe_allow_html=True,
-        )
-    with col2:
-        st.markdown(
-            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
-            f'border-radius:14px;border:1px solid {THEME["border"]}">'
-            f'<div style="font-size:2rem;margin-bottom:12px">👥</div>'
-            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Team-focused</h3>'
-            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
-            f'Managers see trends, never individual scores.</p></div>',
-            unsafe_allow_html=True,
-        )
-    with col3:
-        st.markdown(
-            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
-            f'border-radius:14px;border:1px solid {THEME["border"]}">'
-            f'<div style="font-size:2rem;margin-bottom:12px">💡</div>'
-            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Actionable</h3>'
-            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
-            f'Get resources matched to what\'s actually affecting you.</p></div>',
-            unsafe_allow_html=True,
-        )
-
-    st.markdown("---")
-
-    col_demo, col_signin = st.columns([1, 1])
-    with col_demo:
-        st.markdown(
-            f'<p style="text-align:center;color:{THEME["text_secondary"]};margin-bottom:12px">'
-            f'Want to see how it works?</p>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Try the demo", use_container_width=True, type="secondary"):
-            st.session_state.ux_started = True
-            st.session_state.page_nav = "Employee"
-            st.rerun()
-
-    with col_signin:
-        st.markdown(
-            f'<p style="text-align:center;color:{THEME["text_secondary"]};margin-bottom:12px">'
-            f'Already have an account?</p>',
-            unsafe_allow_html=True,
-        )
-        st.caption("Sign in using the sidebar →")
-
-    st.markdown("---")
-    st.caption(
-        "Oraclaire is a burnout risk assessment tool. "
-        "Sign in with your employee credentials to access your personal dashboard, "
-        "or try the demo to see how it works."
+    # ── Sign-in form ──────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="max-width:400px;margin:0 auto 16px;'
+        f'background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
+        f'border-radius:16px;padding:28px">',
+        unsafe_allow_html=True,
     )
+    st.markdown(
+        f'<p style="text-align:center;font-size:0.8rem;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:0.08em;'
+        f'color:{THEME["text_secondary"]};margin-bottom:20px">Sign in to your account</p>',
+        unsafe_allow_html=True,
+    )
+    role_display_map = {
+        "employee": "Employee",
+        "manager": "Manager",
+        "hr_admin": "HR Admin",
+        "system_admin": "System Admin",
+    }
+    login_role_landing = st.selectbox(
+        "Your role",
+        options=list(role_display_map.values()),
+        index=0,
+        key="landing_role",
+    )
+    login_id_landing = st.text_input(
+        "Employee ID",
+        value="",
+        placeholder="Enter your employee ID",
+        key="landing_emp_id",
+    )
+    if st.button("Sign in", use_container_width=True, type="primary"):
+        if not login_id_landing.strip():
+            st.warning("Enter your Employee ID.")
+        else:
+            try:
+                auth_data = login(login_id_landing.strip())
+                st.session_state.auth_token = auth_data["token"]
+                st.session_state.auth_employee_id = login_id_landing.strip()
+                st.session_state.auth_role = auth_data.get("role", "")
+                actual_role = auth_data.get("role", "employee")
+                default_page = {
+                    "employee": "Employee",
+                    "manager": "Manager",
+                    "hr_admin": "HR Aggregate",
+                    "system_admin": "HR Aggregate",
+                }.get(actual_role, "Employee")
+                st.session_state.page_nav = default_page
+                st.rerun()
+            except ApiError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Login error: {e}")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Demo CTA ──────────────────────────────────────────────────────────
+    st.markdown(
+        f'<p style="text-align:center;color:{THEME["text_secondary"]};margin-bottom:48px">'
+        f'Want to see how it works? '
+        f'<span style="color:{THEME["primary_light"]};cursor:pointer;text-decoration:underline" '
+        f'>Try the demo</span></p>',
+        unsafe_allow_html=True,
+    )
+    if st.button("Try the demo", use_container_width=True):
+        st.session_state.ux_started = True
+        st.session_state.page_nav = "Employee"
+        st.rerun()
+
+    st.markdown("---")
+
+    # ── Feature cards ──────────────────────────────────────────────────────
+    st.markdown(
+        f'<p style="text-align:center;font-size:0.75rem;font-weight:600;'
+        f'text-transform:uppercase;letter-spacing:0.1em;'
+        f'color:{THEME["text_secondary"]};margin-bottom:24px">How it works</p>',
+        unsafe_allow_html=True,
+    )
+    fc1, fc2, fc3 = st.columns(3)
+    for col, emoji, heading, body in [
+        (fc1, "🔒", "Completely private",
+         "Individual results are never shared without your explicit consent."),
+        (fc2, "👥", "Team-focused",
+         "Managers see aggregate trends only — never individual scores."),
+        (fc3, "💡", "Actionable",
+         "Get resources matched to what's actually affecting you."),
+    ]:
+        with col:
+            st.markdown(
+                f'<div style="padding:20px;background:{THEME["card_bg"]};'
+                f'border:1px solid {THEME["border"]};border-radius:12px;height:100%">'
+                f'<div style="font-size:1.6rem;margin-bottom:10px">{emoji}</div>'
+                f'<div style="font-size:0.95rem;font-weight:600;color:{THEME["text"]};'
+                f'margin-bottom:6px">{heading}</div>'
+                f'<div style="font-size:0.85rem;color:{THEME["text_secondary"]};line-height:1.5">'
+                f'{body}</div></div>',
+                unsafe_allow_html=True,
+            )
 
 
 def page_employee():
