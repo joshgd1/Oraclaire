@@ -19,11 +19,6 @@ _root = str(Path(__file__).resolve().parent.parent)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from src.config import (
-    FEATURES,
-    SENIORITY_DESIGNATION_CUTOFF,
-    TIER_ORDER,
-)
 from src.model.train import run as train_model
 from src.views.api_client import (
     ApiError,
@@ -63,50 +58,103 @@ def page_employee():
     if not token or not employee_id:
         # Demo mode: feature sliders + local scoring
         st.sidebar.markdown("### Demo: Employee Assessment")
-        demo_employee_id = st.sidebar.text_input("Employee ID (demo)", value="EID_001")
+        demo_employee_id = st.sidebar.text_input("Employee ID (for reference)", value="EID_001")
+
+        # ── Natural-language questionnaire ───────────────────────────────────────
+        # Maps human-readable questions to model features.
+        # Internal-only features (missing_ra, missing_mfs) get safe defaults (0 = not missing).
+
+        st.sidebar.markdown("### About your role")
+
+        tenure_years = st.sidebar.selectbox(
+            "How long have you been in your current role?",
+            options=[0, 1, 2, 3, 4, 5],
+            format_func=lambda x: [
+                "Less than 6 months", "6–12 months", "1–2 years",
+                "2–5 years", "5–10 years", "10+ years",
+            ][x],
+            index=2,
+        )
+        # Map to approximate days
+        tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
+        tenure_days = tenure_map.get(tenure_years, 547)
+
+        st.sidebar.markdown("### How have you been feeling?")
+
+        energy = st.sidebar.slider(
+            "Energy levels over the past few weeks",
+            min_value=1.0,
+            max_value=10.0,
+            value=5.0,
+            step=0.5,
+            help="1 = completely drained, 10 = full of energy",
+        )
+
+        workload = st.sidebar.slider(
+            "Current workload intensity",
+            min_value=0.0,
+            max_value=10.0,
+            value=5.0,
+            step=0.5,
+            help="0 = very light, 10 = overwhelming",
+        )
+
+        st.sidebar.markdown("### Your working situation")
+
+        wfh = st.sidebar.radio(
+            "Do you have a suitable work-from-home setup?",
+            options=["Yes", "No", "Not applicable"],
+            index=0,
+            horizontal=True,
+        )
+        wfh_setup = 1 if wfh == "Yes" else 0
+
+        company = st.sidebar.radio(
+            "Which best describes your organisation?",
+            options=["Product company", "Service company"],
+            index=0,
+            horizontal=True,
+        )
+        company_type = 0 if company == "Product company" else 1
+
+        st.sidebar.markdown("### Your level")
 
         seniority_tier = st.sidebar.selectbox(
-            "Seniority tier",
+            "Your role level",
             options=[0, 1],
-            format_func=lambda x: "Senior (1)" if x == 1 else "Junior (0)",
+            format_func=lambda x: "Senior (manager / principal / director)" if x == 1 else "Junior / individual contributor",
             index=0,
         )
 
-        st.sidebar.markdown("### Assessment features")
-        features = {}
-        feature_defaults = {
-            "company_type": (0, 1),
-            "wfh_setup": (0, 1),
-            "resource_allocation": (0.0, 10.0),
-            "mental_fatigue_score": (0.0, 10.0),
-            "missing_ra": (0, 1),
-            "missing_mfs": (0, 1),
-            "seniority_tier": (0, 1),
-            "tenure_days": (0, 3650),
+        # ── Build features dict ───────────────────────────────────────────────
+        # Internal-only features: defaults (0 = not missing, normal case for demo)
+        features = {
+            "tenure_days": float(tenure_days),
+            "mental_fatigue_score": float(energy),
+            "resource_allocation": float(workload),
+            "wfh_setup": float(wfh_setup),
+            "company_type": float(company_type),
+            "seniority_tier": float(seniority_tier),
+            # Internal audit features — not shown to employees, defaults only
+            "missing_ra": 0.0,
+            "missing_mfs": 0.0,
+            "tenure_fatigue": 5.0,
+            "tenure_workload": 5.0,
         }
-
-        for feat in FEATURES:
-            default_min, default_max = feature_defaults.get(feat, (0.0, 10.0))
-            val = st.sidebar.slider(
-                feat.replace("_", " ").title(),
-                min_value=float(default_min),
-                max_value=float(default_max),
-                value=(float(default_min) + float(default_max)) / 2,
-                step=0.1 if default_min != default_max else 1.0,
-                key=f"feat_{feat}",
-            )
-            features[feat] = val
-
-        features["seniority_tier"] = float(seniority_tier)
 
         if st.sidebar.button("Run assessment"):
             render_employee_view(
                 employee_id=demo_employee_id,
                 features=features,
                 seniority_tier=seniority_tier,
+                auth_token=None,
             )
         else:
-            st.info("Configure features in the sidebar and click **Run assessment**.")
+            st.info("Answer the questions above and click **Run assessment** to see your results.")
+            st.caption(
+                "ℹ️ Demo mode — results are calculated locally and never stored. "
+                "Sign in with your Employee ID to see your actual assessment."
+            )
         return
 
     # Authenticated: fetch from backend
@@ -139,6 +187,7 @@ def page_employee():
         shap=shap_values,
         resources=resources,
         trajectory_data=trajectory_data,
+        auth_token=token,
     )
 
 
@@ -146,6 +195,10 @@ def page_hr():
     token = st.session_state.get("auth_token")
     if not token:
         st.warning("Sign in to view the HR dashboard.")
+        return
+    role = st.session_state.get("auth_role", "")
+    if role not in ("hr_admin", "system_admin"):
+        st.error("Access denied. HR Aggregate is only available to HR Admins.")
         return
 
     try:
@@ -234,6 +287,13 @@ def page_manager():
 
     team_id = team_info.get("team_id")
     team_name = team_info.get("team_name", "Your Team")
+
+    if team_id is None:
+        st.info(
+            "You don't have a team assigned. "
+            "The Manager view is available to employees with a manager role."
+        )
+        return
 
     try:
         aggregate_data = get_team_aggregate(token, team_id)
@@ -324,6 +384,10 @@ def main():
     elif page == "Reviewer":
         if not st.session_state.auth_token:
             st.warning("Sign in with your Employee ID to access the reviewer queue.")
+            return
+        role = st.session_state.get("auth_role", "")
+        if role not in ("system_admin", "hr_admin"):
+            st.error("Access denied. The Review Queue is only available to Administrators.")
             return
         page_reviewer(st.session_state.auth_token)
 

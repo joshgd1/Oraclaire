@@ -251,8 +251,13 @@ class PermissionService:
     ) -> bool:
         # HR admins: org-wide trends and exclusion counts only
         # They cannot see individual scores or employee data (G-1, G-4)
+        # Exception: an HR admin can read their own score
         if target_employee_id is not None:
-            # HR cannot access individual employee data (G-1)
+            emp = self._get_employee(target_employee_id)
+            is_self = emp is not None and str(emp.id) == viewer_id
+            if action == Action.READ_OWN_SCORE and is_self:
+                return True
+            # HR cannot access other employees' individual data (G-1)
             if action in (
                 Action.READ_OWN_SCORE,
                 Action.READ_EMPLOYEE_DATA,
@@ -332,12 +337,16 @@ class PermissionService:
             return "manager role cannot perform this action"
         if viewer_role == Role.HR_ADMIN:
             if action in (
-                Action.READ_OWN_SCORE,
                 Action.READ_EMPLOYEE_DATA,
                 Action.UPDATE_EMPLOYEE_DATA,
                 Action.DELETE_EMPLOYEE_DATA,
             ):
                 return "HR admins cannot access individual employee data per G-1"
+            if action == Action.READ_OWN_SCORE:
+                emp = self._get_employee(target_employee_id) if target_employee_id else None
+                if emp is None or str(emp.id) != viewer_id:
+                    return "HR admins cannot access other employees' scores per G-1"
+                # Self-case handled above; this shouldn't fire
             return "HR admin role cannot perform this action"
         if viewer_role == Role.PRODUCT_OWNER:
             if action in (Action.READ_HEALTH_ALERTS, Action.ACKNOWLEDGE_HEALTH_ALERT):

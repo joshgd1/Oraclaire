@@ -56,7 +56,8 @@ def _render_header():
     st.title("Critical Tier Review Queue")
     st.markdown(
         "Critical-tier assessments require human review before any action. "
-        "Review the SHAP context below and approve or override the tier."
+        "Review the SHAP context below and approve or override the tier. "
+        f"All reviews must be completed within {REVIEW_TIMEOUT_HOURS} hours of scoring."
     )
 
 
@@ -84,7 +85,7 @@ def _render_review_card(
             f'<div style="padding:12px;border-radius:8px;'
             f'border:1px solid {color};margin-bottom:12px">'
             f"<strong>Employee ID:</strong> {employee_id} &nbsp;&nbsp;"
-            f"<strong>Risk score:</strong> {probability:.0%} &nbsp;&nbsp;"
+            f"<strong>Risk score:</strong> {probability:.1%} &nbsp;&nbsp;"
             f"<strong>Tier:</strong> {tier.upper()}",
             unsafe_allow_html=True,
         )
@@ -127,11 +128,11 @@ def _render_review_card(
 
 
 def _render_override_form(token: str, employee_id: str, review_id: int):
-    """Render tier override form requiring a reason. Submits on button click."""
+    """Render tier override form with reason and confirmation step."""
     st.markdown("### Override tier")
     st.markdown(
         "Changing the tier requires a written reason. "
-        "This is logged in the audit trail."
+        "This is logged in the audit trail and cannot be undone."
     )
 
     new_tier = st.selectbox(
@@ -144,20 +145,43 @@ def _render_override_form(token: str, employee_id: str, review_id: int):
         key=f"reason_{review_id}",
     )
 
-    if st.button("Submit override", key=f"submit_override_{review_id}"):
-        if not reason or len(reason.strip()) < 10:
-            st.error("A reason of at least 10 characters is required.")
-            return
-        try:
-            result = override_review(token, review_id, new_tier, reason.strip())
-            st.session_state.pop(f"_pending_action_{review_id}", None)
-            st.success(
-                f"Tier overridden to {result.get('override_new_tier', new_tier).title()} "
-                f"for {employee_id}. Reason logged."
-            )
-            st.rerun()
-        except ApiError as e:
-            st.error(f"Override failed: {e}")
+    confirm_key = f"_override_confirm_{review_id}"
+
+    if not st.session_state.get(confirm_key, False):
+        # Step 1: validate reason, then ask for confirmation
+        if reason and len(reason.strip()) < 10:
+            st.warning("Please write at least 10 characters to describe the reason.")
+        if st.button("Continue to confirmation", key=f"step1_{review_id}"):
+            if not reason or len(reason.strip()) < 10:
+                st.warning("A reason of at least 10 characters is required before confirming.")
+            else:
+                st.session_state[confirm_key] = True
+                st.rerun()
+    else:
+        # Step 2: confirmation screen
+        st.warning(
+            f"You're about to override Employee {employee_id}'s tier to "
+            f"**{new_tier.upper()}**. This cannot be undone. Are you sure?"
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("Yes, override tier", key=f"confirm_override_{review_id}"):
+                try:
+                    result = override_review(token, review_id, new_tier, reason.strip())
+                    st.session_state.pop(f"_pending_action_{review_id}", None)
+                    st.session_state.pop(confirm_key, None)
+                    st.success(
+                        f"Tier overridden to {result.get('override_new_tier', new_tier).title()} "
+                        f"for {employee_id}. Reason logged."
+                    )
+                    st.rerun()
+                except ApiError as e:
+                    st.error(f"Override failed: {e}")
+        with col2:
+            if st.button("Cancel", key=f"cancel_override_{review_id}"):
+                st.session_state.pop(confirm_key, None)
+                st.session_state.pop(f"_pending_action_{review_id}", None)
+                st.rerun()
 
 
 def render_reviewer_view(*, token: str):

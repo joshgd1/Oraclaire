@@ -34,7 +34,7 @@ JWT_CONFIG = JWTConfig(
     algorithm="HS256",
     issuer=os.environ.get("NEXUS_JWT_ISSUER", "oraclaire"),
     audience=os.environ.get("NEXUS_JWT_AUDIENCE", "oraclaire-api"),
-    exempt_paths=["/health", "/healthz", "/ready"],
+    exempt_paths=["/health", "/healthz", "/ready", "/api/auth/login"],
 )
 
 # ── RBAC ───────────────────────────────────────────────────────────────────────
@@ -48,8 +48,8 @@ _RBAC: dict[str, list[str]] = {
         "delete_employee_data",
     ],
     "MANAGER": [
-        "read_team_aggregate",
         "read_own_score",
+        "read_team_aggregate",
         "read_employee_data",
         "read_review",
         "approve_review",
@@ -57,6 +57,7 @@ _RBAC: dict[str, list[str]] = {
         "manage_cycle",
     ],
     "HR_ADMIN": [
+        "read_own_score",
         "read_org_trends",
         "read_exclusion_counts",
         "read_review",

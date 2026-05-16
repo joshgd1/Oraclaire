@@ -31,7 +31,7 @@ def render_tier_badge(tier: str, probability: float):
         f'<div style="padding:16px;border-radius:8px;background:{color}22;'
         f'border-left:4px solid {color};margin-bottom:16px">'
         f'<h2 style="margin:0;color:{color}">{tier.upper()}</h2>'
-        f'<p style="margin:4px 0 0 0;color:#555">Risk score: {probability:.0%}</p>'
+        f'<p style="margin:4px 0 0 0;color:#555">Risk score: {probability:.1%}</p>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -115,19 +115,79 @@ def render_resources(shap_decomposition: list[dict], tier: str):
         st.markdown(f"- {resource}")
 
 
-def render_data_ownership(employee_id: str):
+def render_data_ownership(employee_id: str, token: str | None = None):
+    """Render data ownership controls. token required for authenticated mode."""
+    import streamlit as st
+
+    from src.views.api_client import ApiError, delete_my_data, export_my_data, view_my_data
+
     st.subheader("Your data")
     st.markdown(
         "You own your data. You can view, export, or delete your assessment "
-        "data at any time."
+        "data at any time under GDPR Article 17 — Right to Erasure."
     )
+
+    if token is None:
+        st.info("Sign in to access your data.")
+        return
+
+    try:
+        emp_id = int(employee_id)
+    except (ValueError, TypeError):
+        st.warning("Invalid employee ID.")
+        return
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.button("View my data", key=f"view_{employee_id}")
+        if st.button("View my data", key=f"view_{employee_id}"):
+            try:
+                data = view_my_data(token, emp_id)
+                with st.expander("Your stored data", expanded=True):
+                    import json
+                    st.json(json.dumps(data.get("data", {}), indent=2, default=str))
+            except ApiError as e:
+                st.error(f"Could not load your data: {e}")
+
     with col2:
-        st.button("Export as JSON", key=f"export_{employee_id}")
+        if st.button("Export as JSON", key=f"export_{employee_id}"):
+            try:
+                result = export_my_data(token, emp_id)
+                import json
+                payload = json.dumps(result.get("export", {}), indent=2, default=str)
+                st.download_button(
+                    label="Download JSON",
+                    data=payload,
+                    file_name=f"oraclaire-data-{employee_id}.json",
+                    mime="application/json",
+                    key=f"dl_{employee_id}",
+                )
+            except ApiError as e:
+                st.error(f"Could not export your data: {e}")
+
     with col3:
-        st.button("Delete my data", key=f"delete_{employee_id}")
+        if st.button("Delete my data", key=f"delete_{employee_id}"):
+            st.session_state[f"_confirm_delete_{employee_id}"] = True
+
+    # Delete confirmation flow
+    if st.session_state.get(f"_confirm_delete_{employee_id}", False):
+        st.warning("⚠️ This will permanently delete all your assessment data. This cannot be undone.")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Yes, delete everything", key=f"confirm_delete_{employee_id}"):
+                try:
+                    delete_my_data(token, emp_id)
+                    st.success(
+                        "Your data has been deleted. "
+                        "You will need to re-consent to appear in future assessments."
+                    )
+                    st.session_state.pop(f"_confirm_delete_{employee_id}", None)
+                except ApiError as e:
+                    st.error(f"Delete failed: {e}")
+                st.rerun()
+        with c2:
+            if st.button("Cancel", key=f"cancel_delete_{employee_id}"):
+                st.session_state.pop(f"_confirm_delete_{employee_id}", None)
+                st.rerun()
 
 
 def render_trajectory(trajectory_data: dict | None):
@@ -198,6 +258,7 @@ def render_employee_view(
     shap: list[dict] | None = None,
     resources: list[str] | None = None,
     trajectory_data: dict | None = None,
+    auth_token: str | None = None,
 ):
     """Render the full employee dashboard.
 
@@ -247,5 +308,5 @@ def render_employee_view(
     render_resources(shap_decomposition, tier)
 
     st.divider()
-    render_data_ownership(employee_id)
+    render_data_ownership(employee_id, token=auth_token)
     render_trajectory(trajectory_data)

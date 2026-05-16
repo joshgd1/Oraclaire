@@ -110,11 +110,16 @@ def render_participation(
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Scoreable population", str(scoreable))
+        st.metric("Eligible employees", str(scoreable))
     with col2:
-        st.metric("Responded", str(responded))
+        st.metric("Completed assessment", str(responded))
     with col3:
         st.metric("Participation rate", f"{rate:.0%}")
+
+    st.caption(
+        "Eligible = employees who consented and are not excluded (ADA, FMLA, PIP, etc.). "
+        "Completed = employees who submitted their assessment."
+    )
 
     sprint1_met = rate >= target_sprint1
     arch_met = rate >= target_architecture
