@@ -53,19 +53,23 @@ def _shap_from_api(shap_values: list[dict]) -> list[dict]:
 
 
 def _render_header():
-    st.title("Critical Tier Review Queue")
     st.markdown(
-        "Critical-tier assessments require human review before any action. "
-        "Review the SHAP context below and approve or override the tier. "
+        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        'letter-spacing:0.08em;color:#6c757d;margin:0">Review Queue</p>',
+        unsafe_allow_html=True,
+    )
+    st.title("Critical Tier Reviews")
+    st.caption(
+        "Critical-tier assessments require human review before any action is taken. "
         f"All reviews must be completed within {REVIEW_TIMEOUT_HOURS} hours of scoring."
     )
 
 
 def _render_pending_count(pending: int):
     if pending == 0:
-        st.success("No pending reviews.")
+        st.success("No pending reviews — all caught up.")
     else:
-        st.warning(f"{pending} assessment(s) awaiting review.")
+        st.warning(f"**{pending}** assessment(s) awaiting review.")
 
 
 def _render_review_card(
@@ -78,94 +82,139 @@ def _render_review_card(
 ):
     """Render one review card for a Critical-tier employee."""
     tier = classify_tier(probability)
-    color = TIER_COLORS.get(tier, "#888")
+    color_map = {
+        "low": "#10b981",
+        "moderate": "#f59e0b",
+        "high": "#f97316",
+        "critical": "#ef4444",
+    }
+    color = color_map.get(tier.lower(), "#888")
 
-    with st.container():
-        st.markdown(
-            f'<div style="padding:12px;border-radius:8px;'
-            f'border:1px solid {color};margin-bottom:12px">'
-            f"<strong>Employee ID:</strong> {employee_id} &nbsp;&nbsp;"
-            f"<strong>Risk score:</strong> {probability:.1%} &nbsp;&nbsp;"
-            f"<strong>Tier:</strong> {tier.upper()}",
-            unsafe_allow_html=True,
+    deadline_html = ""
+    if scored_at:
+        scored_dt = datetime.datetime.fromisoformat(scored_at.replace("Z", "+00:00"))
+        deadline = scored_dt + datetime.timedelta(hours=REVIEW_TIMEOUT_HOURS)
+        remaining = deadline - datetime.datetime.now(datetime.timezone.utc)
+        if remaining.total_seconds() > 0:
+            hours = remaining.total_seconds() / 3600
+            deadline_html = (
+                f'<span style="color:#6c757d;font-size:0.85rem">'
+                f'Review by: <strong>{hours:.1f}h remaining</strong></span>'
+            )
+        else:
+            deadline_html = (
+                f'<span style="color:#ef4444;font-size:0.85rem;font-weight:600">'
+                f'Deadline passed — auto-escalation pending</span>'
+            )
+
+    trajectory_html = ""
+    if trajectory:
+        traj_color = {"worsened": "#ef4444", "improved": "#10b981", "stable": "#f59e0b"}.get(
+            trajectory, "#6c757d"
+        )
+        trajectory_html = (
+            f'<span style="margin-left:16px;color:{traj_color};font-size:0.85rem">'
+            f'Trend: <strong>{trajectory}</strong></span>'
         )
 
-        if scored_at:
-            st.markdown(f"**Scored at:** {scored_at}")
+    shap_rows = ""
+    if shap_decomposition:
+        for item in (shap_decomposition[:5] or []):
+            label = item.get("label") or item.get("feature", "unknown")
+            direction = item.get("direction", "")
+            impact = abs(item.get("impact_value", 0))
+            arrow = "↑" if direction == "increases" else "↓"
+            d_color = "#ef4444" if direction == "increases" else "#10b981"
+            shap_rows += (
+                f'<div style="display:flex;justify-content:space-between;padding:6px 0;'
+                f'border-bottom:1px solid #f3f4f6;color:#374151;font-size:0.88rem">'
+                f'<span>{label}</span>'
+                f'<span style="color:{d_color};font-weight:600">{arrow} {impact:.0%}</span>'
+                f'</div>'
+            )
 
-            scored_dt = datetime.datetime.fromisoformat(scored_at.replace("Z", "+00:00"))
-            deadline = scored_dt + datetime.timedelta(hours=REVIEW_TIMEOUT_HOURS)
-            remaining = deadline - datetime.datetime.now(datetime.timezone.utc)
-            if remaining.total_seconds() > 0:
-                hours = remaining.total_seconds() / 3600
-                st.markdown(f"**Review deadline:** {hours:.1f} hours remaining")
-            else:
-                st.error("Review deadline passed — auto-escalation pending.")
+    st.markdown(
+        f'<div style="background:#ffffff;border:1px solid #dee2e6;'
+        f'border-radius:14px;padding:24px;margin-bottom:20px;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
 
-        if trajectory:
-            st.markdown(f"**Trajectory:** {trajectory}")
+        # Header row
+        f'<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">'
+        f'<span style="font-size:0.78rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.06em;color:{color};background:{color}18;'
+        f'padding:4px 10px;border-radius:6px">{tier.upper()}</span>'
+        f'<strong style="font-size:1rem;color:#1a1a2e">Employee {employee_id}</strong>'
+        f'<span style="margin-left:auto;color:#6c757d;font-size:0.9rem">'
+        f'Score: <strong>{probability:.1%}</strong></span>'
+        f'{trajectory_html}</div>'
 
-        if shap_decomposition:
-            st.markdown("**SHAP context:**")
-            for item in shap_decomposition[:5]:
-                label = item.get("label") or item.get("feature", "unknown")
-                direction = item.get("direction", "")
-                impact = abs(item.get("impact_value", 0))
-                arrow = "+" if direction == "increases" else "-"
-                st.markdown(
-                    f"- {label}: {direction} risk ({arrow}{impact:.1%})"
-                )
+        # Deadline
+        f'{deadline_html}'
 
-        st.markdown("</div>", unsafe_allow_html=True)
+        # SHAP factors
+        f'{shap_rows}'
+
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Approve", key=f"approve_{review_id}"):
+        st.button(
+            "✓  Approve",
+            key=f"approve_{review_id}",
+            use_container_width=True,
+        )
+        if st.session_state.get(f"approve_{review_id}", False):
             st.session_state[f"_pending_action_{review_id}"] = "approve"
     with col2:
-        if st.button("Override tier", key=f"override_{review_id}"):
+        st.button(
+            "↻  Override tier",
+            key=f"override_{review_id}",
+            use_container_width=True,
+        )
+        if st.session_state.get(f"override_{review_id}", False):
             st.session_state[f"_pending_action_{review_id}"] = "override"
 
 
 def _render_override_form(token: str, employee_id: str, review_id: int):
     """Render tier override form with reason and confirmation step."""
-    st.markdown("### Override tier")
-    st.markdown(
-        "Changing the tier requires a written reason. "
-        "This is logged in the audit trail and cannot be undone."
+    st.markdown("##### Override tier")
+    st.caption(
+        "Changing the tier requires a written reason, logged in the audit trail. "
+        "This action cannot be undone."
     )
 
     new_tier = st.selectbox(
-        "Select new tier",
+        "New tier",
         options=[t for t in TIER_ORDER if t != "critical"],
         key=f"new_tier_{review_id}",
     )
     reason = st.text_area(
-        "Reason for override (required, 10–1000 characters)",
+        "Reason (required — min 10 characters)",
         key=f"reason_{review_id}",
+        placeholder="Describe the context for this override...",
     )
 
     confirm_key = f"_override_confirm_{review_id}"
 
     if not st.session_state.get(confirm_key, False):
-        # Step 1: validate reason, then ask for confirmation
         if reason and len(reason.strip()) < 10:
             st.warning("Please write at least 10 characters to describe the reason.")
         if st.button("Continue to confirmation", key=f"step1_{review_id}"):
             if not reason or len(reason.strip()) < 10:
-                st.warning("A reason of at least 10 characters is required before confirming.")
+                st.warning("A reason of at least 10 characters is required.")
             else:
                 st.session_state[confirm_key] = True
                 st.rerun()
     else:
-        # Step 2: confirmation screen
         st.warning(
-            f"You're about to override Employee {employee_id}'s tier to "
-            f"**{new_tier.upper()}**. This cannot be undone. Are you sure?"
+            f"You're about to override Employee **{employee_id}**'s tier to "
+            f"**{new_tier.upper()}**. This cannot be undone."
         )
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Yes, override tier", key=f"confirm_override_{review_id}"):
+            if st.button("Yes, override tier", key=f"confirm_override_{review_id}", type="primary"):
                 try:
                     result = override_review(token, review_id, new_tier, reason.strip())
                     st.session_state.pop(f"_pending_action_{review_id}", None)
@@ -185,31 +234,21 @@ def _render_override_form(token: str, employee_id: str, review_id: int):
 
 
 def render_reviewer_view(*, token: str):
-    """
-    Render the full reviewer queue using live API data.
-
-    Fetches pending reviews from GET /api/reviews/pending,
-    fetches full detail (SHAP + trajectory) for each via GET /api/reviews/{id},
-    and handles approve/override POST calls.
-    """
+    """Render the full reviewer queue using live API data."""
     _render_header()
 
     # Handle pending approve/override actions from prior rerun
-    pending_keys = [k for k in st.session_state if k.startswith("_pending_action_")]
-    for key in pending_keys:
+    for key in [k for k in st.session_state if k.startswith("_pending_action_")]:
         review_id = int(key.replace("_pending_action_", ""))
         action = st.session_state.pop(key)
         if action == "approve":
             try:
-                result = approve_review(token, review_id)
-                st.success(
-                    f"Assessment approved. Intervention may proceed."
-                )
+                approve_review(token, review_id)
+                st.success("Assessment approved. Intervention may proceed.")
             except ApiError as e:
                 st.error(f"Approve failed: {e}")
         elif action == "override":
-            # Fall through to render the override form this rerun
-            pass
+            pass  # Fall through to render the override form
 
     # Fetch pending review list
     try:
@@ -227,7 +266,7 @@ def render_reviewer_view(*, token: str):
     if not pending_list:
         return
 
-    # Fetch full detail for each pending review (for SHAP + trajectory)
+    # Fetch full detail for each pending review
     review_details: dict[int, dict] = {}
     for summary in pending_list:
         rid = summary["review_id"]
@@ -247,7 +286,6 @@ def render_reviewer_view(*, token: str):
         trajectory_list = detail.get("trajectory", [])
         shap_values = risk_score.get("shap_values", [])
 
-        # Derive trajectory string
         trajectory_str = None
         if len(trajectory_list) >= 2:
             first = trajectory_list[-1].get("numeric_score", 0)

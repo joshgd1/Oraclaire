@@ -12,39 +12,57 @@ import streamlit as st
 from src.config import ORT_CEILING, TIER_COLORS, TIER_ORDER
 
 
+TIER_THEME_MGR = {
+    "low": "#10b981",
+    "moderate": "#f59e0b",
+    "high": "#f97316",
+    "critical": "#ef4444",
+}
+
+
 def render_header(team_name: str):
-    st.title(f"Team: {team_name}")
     st.markdown(
-        "Aggregate burnout risk for your team. "
-        "No individual employee data is shown."
+        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        'letter-spacing:0.08em;color:#6c757d;margin:0">Manager</p>',
+        unsafe_allow_html=True,
+    )
+    st.title(f"Team: {team_name}")
+    st.caption(
+        "Aggregate burnout risk for your team. No individual employee scores are shown."
     )
 
 
 def render_tier_distribution(cycles: list[dict], current_tiers: dict[str, int]):
     """Render current cycle tier distribution as bar chart."""
-    st.subheader("Current risk tier distribution")
+    st.markdown("#### Current risk tier distribution")
 
     if not current_tiers:
         st.info("No assessment data available yet.")
         return
 
     total = sum(current_tiers.values())
-    st.markdown(f"Based on {total} assessed team members.")
+    st.caption(f"Based on {total} assessed team members.")
 
-    for tier in TIER_ORDER:
+    cols = st.columns(4)
+    tier_icons = {"low": "✓", "moderate": "∼", "high": "⚠", "critical": "✕"}
+    for idx, tier in enumerate(TIER_ORDER):
         count = current_tiers.get(tier, 0)
         pct = count / total if total > 0 else 0
-        color = TIER_COLORS.get(tier, "#888")
-        bar_width = int(pct * 300)
-
-        st.markdown(
-            f'<div style="margin-bottom:6px">'
-            f"<strong>{tier.title()}</strong>: {count} ({pct:.0%})"
-            f'<div style="height:12px;width:{bar_width}px;background:{color};'
-            f'border-radius:4px;margin-top:2px"></div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        color = TIER_THEME_MGR.get(tier, "#888")
+        icon = tier_icons.get(tier, "")
+        with cols[idx]:
+            st.markdown(
+                f'<div style="text-align:center;padding:20px 12px;background:#ffffff;'
+                f'border:1px solid #dee2e6;border-radius:12px;margin-bottom:12px;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                f'<div style="font-size:1.8rem;margin-bottom:4px">{icon}</div>'
+                f'<div style="font-size:1.6rem;font-weight:800;color:{color}">{pct:.0%}</div>'
+                f'<div style="color:#6c757d;font-size:0.8rem;text-transform:uppercase;'
+                f'letter-spacing:0.04em">{tier}</div>'
+                f'<div style="color:#9ca3af;font-size:0.78rem;margin-top:4px">{count} people</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_trend_chart(cycles: list[dict]):
@@ -52,7 +70,7 @@ def render_trend_chart(cycles: list[dict]):
     if not cycles:
         return
 
-    st.subheader("High+Critical trend")
+    st.markdown("#### High+Critical trend")
 
     trend_data = [
         {
@@ -71,7 +89,7 @@ def render_trend_chart(cycles: list[dict]):
 
 def render_recommendations(top_factors: list[dict], resources: list[str], worst_tier: str):
     """Render SHAP-matched action recommendations."""
-    st.subheader("Recommended actions")
+    st.markdown("#### Recommended actions")
 
     if not top_factors and not resources:
         st.info("No recommendations available yet.")
@@ -84,31 +102,36 @@ def render_recommendations(top_factors: list[dict], resources: list[str], worst_
         )
 
     if top_factors:
-        st.markdown("**Top burnout risk factors for your team:**")
+        st.caption("Top burnout risk factors for your team:")
         for factor in top_factors[:3]:
             feat = factor.get("feature", "")
             impact = factor.get("avg_impact", 0)
             direction = factor.get("direction", "increases")
-            color = "#ef4444" if direction == "increases" else "#22c55e"
+            color = "#ef4444" if direction == "increases" else "#10b981"
             st.markdown(
-                f"- **{feat.replace('_', ' ').title()}** — "
-                f"<span style='color:{color}'>{direction} risk</span> "
-                f"(avg impact: {impact:.1%})",
+                f'- **{feat.replace("_", " ").title()}** — '
+                f'<span style="color:{color}">{direction} risk</span> '
+                f'(avg impact: {impact:.1%})',
                 unsafe_allow_html=True,
             )
 
     if resources:
-        st.markdown("**Support resources for your team:**")
+        st.markdown("**Support resources:**")
         tier_prefix = {
             "moderate": "Self-guided:",
             "high": "Professional support pathways:",
             "critical": "Urgent — seek professional support:",
         }
-        st.markdown(tier_prefix.get(worst_tier, "Resources:"))
+        st.caption(tier_prefix.get(worst_tier, "Resources:"))
         for resource in resources:
-            st.markdown(f"- {resource}")
+            st.markdown(
+                f'<div style="padding:8px 12px;background:#f8f9fa;border-radius:6px;'
+                f'border-left:3px solid #0d7377;margin-bottom:6px;color:#1a1a2e">'
+                f"{resource}</div>",
+                unsafe_allow_html=True,
+            )
     else:
-        st.markdown(
+        st.caption(
             "No specific resource recommendations based on current team SHAP factors."
         )
 
@@ -118,7 +141,7 @@ def render_team_trajectory(
     team_id: int,
 ):
     """Render team-level trajectory aggregate with member distribution."""
-    st.subheader("Team trend")
+    st.markdown("#### Team trend")
 
     if not team_trajectory_data:
         st.info("No trajectory data available yet.")
@@ -134,17 +157,12 @@ def render_team_trajectory(
     avg_delta = team_trajectory_data.get("average_delta")
     total = sum(distribution.values()) if distribution else 0
 
-    icons = {
-        "improved": "📉",
-        "worsened": "📈",
-        "held": "➡️",
-        "no_trajectory": "⏳",
-    }
+    icons = {"improved": "↓", "worsened": "↑", "held": "→", "no_trajectory": "·"}
     colors = {
-        "improved": "#22c55e",
+        "improved": "#10b981",
         "worsened": "#ef4444",
         "held": "#f59e0b",
-        "no_trajectory": "#888",
+        "no_trajectory": "#9ca3af",
     }
     labels = {
         "improved": "Improving",
@@ -157,20 +175,20 @@ def render_team_trajectory(
         color = colors.get(team_traj, "#888")
         icon = icons.get(team_traj, "")
         label = labels.get(team_traj, team_traj)
-
         delta_display = ""
         if avg_delta is not None:
             sign = "+" if avg_delta > 0 else ""
-            delta_display = f" · avg burnout change: {sign}{avg_delta:.1%}"
+            delta_display = f" · avg change: {sign}{avg_delta:.1%}"
 
         st.markdown(
-            f'<div style="padding:16px;border-radius:8px;background:{color}22;'
-            f'border-left:4px solid {color};margin-bottom:16px">'
-            f'<span style="font-size:24px">{icon}</span> '
-            f'<strong style="color:{color};font-size:18px">{label}</strong>'
-            f'<p style="margin:4px 0 0 0;color:#555">'
-            f'Based on {scored} team members with enough assessment history{delta_display}'
-            f'</p></div>',
+            f'<div style="display:flex;align-items:center;gap:16px;'
+            f'padding:16px 20px;border-radius:12px;background:{color}18;'
+            f'border:1px solid {color}44;margin-bottom:16px">'
+            f'<span style="font-size:1.8rem;font-weight:800;color:{color}">{icon}</span>'
+            f'<div>'
+            f'<strong style="color:{color}">{label}</strong><br>'
+            f'<span style="color:#6c757d;font-size:0.85rem">'
+            f'{scored} team members with enough history{delta_display}</span></div></div>',
             unsafe_allow_html=True,
         )
     elif team_traj == "no_trajectory":
@@ -181,22 +199,21 @@ def render_team_trajectory(
     else:
         st.info("No trajectory data available yet.")
 
-    # Distribution breakdown
-    st.markdown("**Member breakdown:**")
-    for cat in ["improved", "held", "worsened", "no_trajectory"]:
-        count = distribution.get(cat, 0)
-        pct = count / total if total > 0 else 0
-        color = colors.get(cat, "#888")
-        icon = icons.get(cat, "")
-        bar_w = int(pct * 200)
-        st.markdown(
-            f'<div style="margin-bottom:4px;color:#555">'
-            f'{icon} {labels.get(cat, cat)}: {count} ({pct:.0%})'
-            f'<div style="height:6px;width:{bar_w}px;background:{color};'
-            f'border-radius:3px;margin-top:2px"></div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
+    if distribution:
+        st.caption("**Member breakdown:**")
+        for cat in ["improved", "held", "worsened", "no_trajectory"]:
+            count = distribution.get(cat, 0)
+            pct = count / total if total > 0 else 0
+            color = colors.get(cat, "#888")
+            bar_w = int(pct * 160)
+            st.markdown(
+                f'<div style="margin-bottom:6px;color:#6c757d;font-size:0.88rem">'
+                f'{labels.get(cat, cat)}: {count} ({pct:.0%})'
+                f'<div style="height:6px;width:{bar_w}px;background:{color};'
+                f'border-radius:3px;margin-top:2px"></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_ort_status(
@@ -206,7 +223,7 @@ def render_ort_status(
     ort_ceiling: float,
 ):
     """Render ORT alert status for the team."""
-    st.subheader("Team Risk Status")
+    st.markdown("#### Team Risk Status")
 
     if high_critical_pct is None:
         return
@@ -215,9 +232,8 @@ def render_ort_status(
         st.warning(
             f"Your team has been at **{high_critical_pct:.0%}** "
             f"High+Critical for {consecutive_weeks_elevated} consecutive weeks, "
-            f"which exceeds the **{ort_ceiling:.0%}** threshold. "
-            "Individual alerts are suppressed; an organisational risk report "
-            "has been sent to HR."
+            f"exceeding the **{ort_ceiling:.0%}** threshold. "
+            "Individual alerts are suppressed; an organisational risk report has been sent to HR."
         )
     elif high_critical_pct > ort_ceiling:
         st.info(
@@ -254,7 +270,7 @@ def render_manager_view(
 
     if suppressed:
         st.warning(
-            f"⚠️ Team aggregate is not available: {suppression_reason or 'team too small'}."
+            f"Team aggregate is not available: {suppression_reason or 'team too small'}."
         )
         return
 
@@ -265,15 +281,25 @@ def render_manager_view(
         )
         return
 
-    # Tier distribution (latest cycle = last in cycles list)
     current_tiers = {}
     if cycles:
         current_tiers = cycles[-1].get("tiers", {})
 
-    render_tier_distribution(cycles, current_tiers)
-    render_trend_chart(cycles)
-    render_ort_status(high_critical_pct, consecutive_weeks_elevated, team_size, ort_ceiling)
-    render_recommendations(top_factors, recommendations, worst_tier)
-
+    sections = [
+        lambda: render_tier_distribution(cycles, current_tiers),
+        lambda: render_trend_chart(cycles),
+        lambda: render_ort_status(high_critical_pct, consecutive_weeks_elevated, team_size, ort_ceiling),
+        lambda: render_recommendations(top_factors, recommendations, worst_tier),
+    ]
     if not suppressed and not visibility_locked:
-        render_team_trajectory(team_trajectory_data, team_id)
+        sections.append(lambda: render_team_trajectory(team_trajectory_data, team_id))
+
+    for section_fn in sections:
+        st.markdown(
+            '<div style="background:#ffffff;border:1px solid #dee2e6;'
+            'border-radius:14px;padding:24px;margin-bottom:20px;'
+            'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+            unsafe_allow_html=True,
+        )
+        section_fn()
+        st.markdown("</div>", unsafe_allow_html=True)

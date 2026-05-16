@@ -16,22 +16,46 @@ from src.config import (
 )
 from src.model.serve import score_employee
 
+THEME = {
+    "low": "#10b981",
+    "moderate": "#f59e0b",
+    "high": "#f97316",
+    "critical": "#ef4444",
+    "text": "#1a1a2e",
+    "text_secondary": "#6c757d",
+    "card_bg": "#ffffff",
+    "border": "#dee2e6",
+    "bg": "#f8f9fa",
+}
+
+
+def _card(title: str | None = None):
+    """Context manager for a clean white card."""
+    return st.container()
+
 
 def render_header():
-    st.title("Your Burnout Risk Assessment")
     st.markdown(
-        "This shows your current burnout risk classification based on your "
-        "most recent assessment. Your results are private — only you can see them."
+        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        'letter-spacing:0.08em;color:#6c757d;margin:0">Your Assessment</p>',
+        unsafe_allow_html=True,
+    )
+    st.title("Burnout Risk Profile")
+    st.caption(
+        "Your results are private — only you can see your individual score."
     )
 
 
 def render_tier_badge(tier: str, probability: float):
-    color = TIER_COLORS.get(tier, "#888")
+    color = THEME.get(tier.lower(), "#888")
     st.markdown(
-        f'<div style="padding:16px;border-radius:8px;background:{color}22;'
-        f'border-left:4px solid {color};margin-bottom:16px">'
-        f'<h2 style="margin:0;color:{color}">{tier.upper()}</h2>'
-        f'<p style="margin:4px 0 0 0;color:#555">Risk score: {probability:.1%}</p>'
+        f'<div style="display:inline-flex;align-items:center;gap:16px;'
+        f'padding:16px 24px;border-radius:12px;background:{color}18;'
+        f'border:1px solid {color}44;margin-bottom:20px">'
+        f'<span style="font-size:1.8rem;font-weight:800;color:{color};'
+        f'text-transform:uppercase;letter-spacing:0.05em">{tier}</span>'
+        f'<span style="color:#6c757d;font-size:0.95rem">Burnout score: '
+        f'<strong style="color:#1a1a2e">{probability:.1%}</strong></span>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -39,34 +63,38 @@ def render_tier_badge(tier: str, probability: float):
 
 def render_tier_explanation(tier: str):
     explanations = {
-        "low": "Your current burnout risk is low. No action needed.",
+        "low": "Your current burnout risk is low. No action needed — keep doing what works.",
         "moderate": (
             "Some burnout indicators are present. The resources below may help "
-            "you maintain your wellbeing."
+            "you protect your wellbeing before things escalate."
         ),
         "high": (
             "Significant burnout indicators are present. Consider reaching out "
             "to the resources below. Your organisation may receive an anonymised "
-            "aggregate signal at team level."
+            "aggregate signal at team level to trigger support."
         ),
         "critical": (
-            "Severe burnout indicators detected. A human review is required "
-            "before any action is taken. You will be contacted by a reviewer "
-            "who will discuss support options with you."
+            "Severe burnout indicators detected. A human reviewer will be in touch "
+            "to discuss support options with you — no action is taken without your involvement."
         ),
     }
-    st.info(explanations.get(tier, ""))
+    msg = explanations.get(tier, "")
+    if tier in ("high", "critical"):
+        st.warning(msg)
+    elif tier == "moderate":
+        st.info(msg)
+    else:
+        st.success(msg)
 
 
 def render_shap_breakdown(shap_decomposition: list[dict]):
     if not shap_decomposition:
-        st.write("No detailed breakdown available for this assessment.")
         return
 
-    st.subheader("What's driving your score")
-    st.markdown(
-        "These are the main factors contributing to your assessment result. "
-        "Each shows how much it increased or decreased your risk level."
+    st.markdown("#### What drove your score")
+    st.caption(
+        "The biggest factors in your assessment — showing which areas increased "
+        "or decreased your burnout risk."
     )
 
     for item in shap_decomposition:
@@ -75,19 +103,24 @@ def render_shap_breakdown(shap_decomposition: list[dict]):
             continue
         direction = item.get("direction", "")
         impact = abs(item.get("impact_value", 0))
-        bar_width = min(int(impact * 200), 200)
-        color = "#ef4444" if direction == "increases" else "#22c55e"
-        arrow = "+" if direction == "increases" else "-"
+        bar_width = min(int(impact * 180), 180)
+        color = "#ef4444" if direction == "increases" else "#10b981"
+        arrow = "↑" if direction == "increases" else "↓"
 
-        st.markdown(
-            f'<div style="margin-bottom:8px">'
-            f"<strong>{label}</strong> — {direction} risk "
-            f'<span style="color:{color};font-weight:bold">{arrow}{impact:.1%}</span>'
-            f'<div style="height:8px;width:{bar_width}px;background:{color};'
-            f'border-radius:4px;margin-top:4px"></div>'
-            f"</div>",
-            unsafe_allow_html=True,
-        )
+        col_label, col_bar = st.columns([4, 1])
+        with col_label:
+            st.markdown(
+                f"**{label}**  "
+                f'<span style="color:{color};font-weight:600">{arrow} {impact:.0%}</span>  '
+                f'<span style="color:#6c757d;font-size:0.85rem">{direction}</span>',
+                unsafe_allow_html=True,
+            )
+        with col_bar:
+            st.markdown(
+                f'<div style="height:8px;width:{bar_width}px;background:{color};'
+                f'border-radius:4px;margin-top:6px"></div>',
+                unsafe_allow_html=True,
+            )
 
 
 def render_resources(shap_decomposition: list[dict], tier: str):
@@ -99,32 +132,37 @@ def render_resources(shap_decomposition: list[dict], tier: str):
 
     top_feature = shap_decomposition[0].get("feature", "")
     resources = RESOURCES.get(top_feature, [])
-
     if not resources:
         return
 
-    st.subheader("Recommended resources")
     tier_prefix = {
-        "moderate": "Self-guided resources:",
-        "high": "Professional support pathways:",
-        "critical": "Urgent support — a reviewer will discuss options with you:",
+        "moderate": "Self-guided resources",
+        "high": "Recommended support pathways",
+        "critical": "Urgent support — a reviewer will be in touch",
     }
-    st.markdown(tier_prefix.get(tier, "Resources:"))
+
+    st.markdown("#### Recommended resources")
+    st.caption(f"Based on your top risk factor: *{top_feature.replace('_', ' ').title()}*")
 
     for resource in resources:
-        st.markdown(f"- {resource}")
+        st.markdown(
+            f'<div style="padding:10px 14px;background:#f8f9fa;border-radius:8px;'
+            f'border-left:3px solid #0d7377;margin-bottom:8px;color:#1a1a2e">'
+            f"{resource}</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def render_data_ownership(employee_id: str, token: str | None = None):
     """Render data ownership controls. token required for authenticated mode."""
-    import streamlit as st
+    import json as _json
 
     from src.views.api_client import ApiError, delete_my_data, export_my_data, view_my_data
 
-    st.subheader("Your data")
-    st.markdown(
-        "You own your data. You can view, export, or delete your assessment "
-        "data at any time under GDPR Article 17 — Right to Erasure."
+    st.markdown("#### Your data")
+    st.caption(
+        "You own your assessment data. Under GDPR Article 17 (Right to Erasure), "
+        "you can view, export, or delete it at any time."
     )
 
     if token is None:
@@ -137,49 +175,47 @@ def render_data_ownership(employee_id: str, token: str | None = None):
         st.warning("Invalid employee ID.")
         return
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("View my data", key=f"view_{employee_id}"):
+    col_view, col_export, col_delete = st.columns(3)
+    with col_view:
+        if st.button("View my data", use_container_width=True, key=f"view_{employee_id}"):
             try:
                 data = view_my_data(token, emp_id)
                 with st.expander("Your stored data", expanded=True):
-                    import json
-                    st.json(json.dumps(data.get("data", {}), indent=2, default=str))
+                    st.json(_json.dumps(data.get("data", {}), indent=2, default=str))
             except ApiError as e:
-                st.error(f"Could not load your data: {e}")
+                st.error(f"Could not load: {e}")
 
-    with col2:
-        if st.button("Export as JSON", key=f"export_{employee_id}"):
+    with col_export:
+        if st.button("Export as JSON", use_container_width=True, key=f"export_{employee_id}"):
             try:
                 result = export_my_data(token, emp_id)
-                import json
-                payload = json.dumps(result.get("export", {}), indent=2, default=str)
+                payload = _json.dumps(result.get("export", {}), indent=2, default=str)
                 st.download_button(
                     label="Download JSON",
                     data=payload,
                     file_name=f"oraclaire-data-{employee_id}.json",
                     mime="application/json",
+                    use_container_width=True,
                     key=f"dl_{employee_id}",
                 )
             except ApiError as e:
-                st.error(f"Could not export your data: {e}")
+                st.error(f"Could not export: {e}")
 
-    with col3:
-        if st.button("Delete my data", key=f"delete_{employee_id}"):
+    with col_delete:
+        if st.button("Delete my data", use_container_width=True, key=f"delete_{employee_id}"):
             st.session_state[f"_confirm_delete_{employee_id}"] = True
 
-    # Delete confirmation flow
     if st.session_state.get(f"_confirm_delete_{employee_id}", False):
-        st.warning("⚠️ This will permanently delete all your assessment data. This cannot be undone.")
+        st.warning(
+            "⚠️ This permanently deletes all your assessment data and cannot be undone. "
+            "You will need to re-consent to appear in future assessments."
+        )
         c1, c2 = st.columns(2)
         with c1:
             if st.button("Yes, delete everything", key=f"confirm_delete_{employee_id}"):
                 try:
                     delete_my_data(token, emp_id)
-                    st.success(
-                        "Your data has been deleted. "
-                        "You will need to re-consent to appear in future assessments."
-                    )
+                    st.success("Your data has been deleted.")
                     st.session_state.pop(f"_confirm_delete_{employee_id}", None)
                 except ApiError as e:
                     st.error(f"Delete failed: {e}")
@@ -197,13 +233,11 @@ def render_trajectory(trajectory_data: dict | None):
 
     trajectory = trajectory_data.get("trajectory", "no_trajectory")
 
-    st.divider()
-    st.subheader("Your trend")
+    st.markdown("#### Your trend")
 
     if trajectory == "no_trajectory":
         st.info(
-            "Not enough assessment history yet to show a trend. "
-            "Complete at least two assessment cycles to see your trajectory."
+            "Complete at least two assessment cycles to see your burnout trend."
         )
         return
 
@@ -212,37 +246,26 @@ def render_trajectory(trajectory_data: dict | None):
     previous = trajectory_data.get("previous_score")
     threshold = trajectory_data.get("threshold_used", 0.10)
 
-    icons = {
-        "improved": "📉",
-        "worsened": "📈",
-        "held": "➡️",
-    }
-    colors = {
-        "improved": "#22c55e",
-        "worsened": "#ef4444",
-        "held": "#f59e0b",
-    }
-    labels = {
-        "improved": "Improving",
-        "worsened": "Worsening",
-        "held": "Holding steady",
-    }
+    icons = {"improved": "↓", "worsened": "↑", "held": "→"}
+    colors = {"improved": "#10b981", "worsened": "#ef4444", "held": "#f59e0b"}
+    labels = {"improved": "Improving", "worsened": "Worsening", "held": "Holding steady"}
 
     icon = icons.get(trajectory, "")
     color = colors.get(trajectory, "#888")
     label = labels.get(trajectory, trajectory.title())
-
     delta_abs = abs(delta) if delta is not None else 0
 
     st.markdown(
-        f'<div style="padding:16px;border-radius:8px;background:{color}22;'
-        f'border-left:4px solid {color};margin-bottom:16px">'
-        f'<span style="font-size:24px">{icon}</span> '
-        f'<strong style="color:{color};font-size:18px">{label}</strong>'
-        f'<p style="margin:4px 0 0 0;color:#555">'
+        f'<div style="display:flex;align-items:center;gap:16px;'
+        f'padding:16px 20px;border-radius:12px;background:{color}18;'
+        f'border:1px solid {color}44;margin-bottom:16px">'
+        f'<span style="font-size:1.8rem;font-weight:800;color:{color}">{icon}</span>'
+        f'<div>'
+        f'<strong style="color:{color};font-size:1rem">{label}</strong><br>'
+        f'<span style="color:#6c757d;font-size:0.85rem">'
         f'Burnout score changed by <strong>{delta_abs:.1%}</strong> '
-        f'(from {previous:.0%} to {current:.0%}, threshold ±{threshold:.0%})'
-        f'</p></div>',
+        f'(from {previous:.0%} to {current:.0%})'
+        f'</span></div></div>',
         unsafe_allow_html=True,
     )
 
@@ -269,7 +292,6 @@ def render_employee_view(
     render_header()
 
     if features is not None and seniority_tier is not None:
-        # Local scoring path (demo mode)
         try:
             kwargs: dict = {
                 "employee_id": employee_id,
@@ -281,8 +303,7 @@ def render_employee_view(
             result = score_employee(**kwargs)
         except FileNotFoundError:
             st.error(
-                "Model not found. Run the training pipeline first: "
-                "`python -m src.model.train`"
+                "Model not found. Run: `python -m src.model.train`"
             )
             return
         except ValueError as e:
@@ -293,7 +314,6 @@ def render_employee_view(
         shap_decomposition = result["shap"]
         resources_out = result.get("resources", [])
     else:
-        # API-backed path
         if risk_tier is None or burnout_probability is None:
             st.error("Either provide features+seniority_tier or risk_tier+burnout_probability.")
             return
@@ -302,11 +322,28 @@ def render_employee_view(
         shap_decomposition = shap or []
         resources_out = resources or []
 
+    # Wrap in a card
+    st.markdown(
+        f'<div style="background:#ffffff;border:1px solid #dee2e6;'
+        f'border-radius:14px;padding:28px;margin-bottom:20px;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+        unsafe_allow_html=True,
+    )
     render_tier_badge(tier, probability)
     render_tier_explanation(tier)
     render_shap_breakdown(shap_decomposition)
     render_resources(shap_decomposition, tier)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
+    # GDPR data section
+    st.markdown(
+        f'<div style="background:#ffffff;border:1px solid #dee2e6;'
+        f'border-radius:14px;padding:24px;margin-bottom:20px;'
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+        unsafe_allow_html=True,
+    )
     render_data_ownership(employee_id, token=auth_token)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # Trajectory section
     render_trajectory(trajectory_data)

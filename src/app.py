@@ -40,6 +40,217 @@ from src.views.hr_aggregate import render_hr_view
 from src.views.manager import render_manager_view
 from src.views.reviewer import render_reviewer_view
 
+# ── Theme constants ────────────────────────────────────────────────────────────
+
+THEME = {
+    "bg": "#f8f9fa",
+    "card_bg": "#ffffff",
+    "primary": "#0d7377",
+    "primary_light": "#14919b",
+    "text": "#1a1a2e",
+    "text_secondary": "#6c757d",
+    "border": "#dee2e6",
+    "low_color": "#10b981",
+    "moderate_color": "#f59e0b",
+    "high_color": "#f97316",
+    "critical_color": "#ef4444",
+    "sidebar_bg": "#1a1a2e",
+    "sidebar_text": "#e5e7eb",
+}
+
+
+def _inject_theme():
+    """Inject custom CSS for a clean, professional theme."""
+    st.html(
+        f"""
+        <style>
+        /* Page */
+        .stApp, .stMainBlockContainer {{
+            background: {THEME['bg']} !important;
+        }}
+        /* Cards */
+        .stMarkdown, .element-container {{
+            background: transparent !important;
+        }}
+        /* Headers */
+        h1, h2, h3, h4 {{
+            color: {THEME['text']} !important;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;
+            font-weight: 600 !important;
+        }}
+        /* Sidebar */
+        [data-testid="stSidebar"] {{
+            background: {THEME['sidebar_bg']} !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {{
+            color: {THEME['sidebar_text']} !important;
+        }}
+        /* Metric cards */
+        [data-testid="stMetric"] {{
+            background: {THEME['card_bg']} !important;
+            border: 1px solid {THEME['border']} !important;
+            border-radius: 12px !important;
+            padding: 16px 20px !important;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06) !important;
+        }}
+        [data-testid="stMetricLabel"] {{
+            color: {THEME['text_secondary']} !important;
+            font-size: 0.8rem !important;
+            font-weight: 500 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.04em !important;
+        }}
+        [data-testid="stMetricValue"] {{
+            color: {THEME['text']} !important;
+            font-weight: 700 !important;
+            font-size: 1.6rem !important;
+        }}
+        /* Buttons */
+        .stButton > button {{
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            border: none !important;
+            transition: all 0.15s !important;
+        }}
+        .stButton > button:hover {{
+            opacity: 0.88 !important;
+            transform: translateY(-1px) !important;
+        }}
+        /* Text inputs */
+        .stTextInput > div > div > input, .stTextArea > div > div > textarea {{
+            border-radius: 8px !important;
+            border: 1px solid {THEME['border']} !important;
+            background: {THEME['card_bg']} !important;
+        }}
+        /* Select boxes */
+        .stSelectbox > div > div {{
+            border-radius: 8px !important;
+        }}
+        /* Success/warning/error boxes */
+        .stAlert {{
+            border-radius: 10px !important;
+            border: none !important;
+        }}
+        /* Divider */
+        hr {{
+            border: none !important;
+            border-top: 1px solid {THEME['border']} !important;
+            margin: 24px 0 !important;
+        }}
+        /* Download button */
+        .stDownloadButton > button {{
+            border-radius: 8px !important;
+        }}
+        /* Expanders */
+        .streamlit-expanderHeader {{
+            border-radius: 8px !important;
+            background: {THEME['card_bg']} !important;
+            border: 1px solid {THEME['border']} !important;
+        }}
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {{
+            gap: 8px !important;
+        }}
+        .stTabs [data-baseweb="tab"] {{
+            border-radius: 8px 8px 0 0 !important;
+            padding: 8px 16px !important;
+        }}
+        /* Sidebar button accent */
+        [data-testid="stSidebar"] .stButton > button {{
+            width: 100% !important;
+            background: {THEME['primary']} !important;
+            color: white !important;
+        }}
+        [data-testid="stSidebar"] .stButton > button:hover {{
+            background: {THEME['primary_light']} !important;
+        }}
+        /* Subheader text in sidebar */
+        [data-testid="stSidebar"] h3 {{
+            color: {THEME['sidebar_text']} !important;
+            font-size: 0.95rem !important;
+            font-weight: 600 !important;
+            margin-top: 16px !important;
+            margin-bottom: 4px !important;
+        }}
+        [data-testid="stSidebar"] label {{
+            color: #d1d5db !important;
+        }}
+        [data-testid="stSidebar"] p {{
+            color: #9ca3af !important;
+            font-size: 0.8rem !important;
+        }}
+        /* Info boxes */
+        [data-testid="stInfo"] {{
+            background: #eff6ff !important;
+            border-left: 4px solid #3b82f6 !important;
+            border-radius: 8px !important;
+        }}
+        [data-testid="stSuccess"] {{
+            background: #f0fdf4 !important;
+            border-left: 4px solid #22c55e !important;
+            border-radius: 8px !important;
+        }}
+        [data-testid="stWarning"] {{
+            background: #fffbeb !important;
+            border-left: 4px solid #f59e0b !important;
+            border-radius: 8px !important;
+        }}
+        [data-testid="stError"] {{
+            background: #fef2f2 !important;
+            border-left: 4px solid #ef4444 !important;
+            border-radius: 8px !important;
+        }}
+        /* Spinner */
+        .stSpinner > div {{
+            border-color: {THEME['primary']} !important;
+        }}
+        </style>
+        """
+    )
+
+
+def _card(content_fn, *args, **kwargs):
+    """Render content inside a clean white card."""
+    with st.container():
+        st.markdown(
+            f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
+            f'border-radius:14px;padding:24px;margin-bottom:20px;'
+            f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+            unsafe_allow_html=True,
+        )
+        content_fn(*args, **kwargs)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _section_title(title: str, icon: str = ""):
+    prefix = f"{icon} " if icon else ""
+    st.markdown(
+        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
+        f"{prefix}{title}</p>",
+        unsafe_allow_html=True,
+    )
+
+
+def _tier_badge_html(tier: str, probability: float) -> str:
+    colors = {
+        "low": THEME["low_color"],
+        "moderate": THEME["moderate_color"],
+        "high": THEME["high_color"],
+        "critical": THEME["critical_color"],
+    }
+    color = colors.get(tier.lower(), "#888")
+    return (
+        f'<div style="display:inline-flex;align-items:center;gap:12px;'
+        f'padding:12px 20px;border-radius:10px;background:{color}18;'
+        f'border:1px solid {color}44;margin-bottom:16px">'
+        f'<span style="font-size:1.5rem;font-weight:800;color:{color};'
+        f'text-transform:uppercase;letter-spacing:0.05em">{tier}</span>'
+        f'<span style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+        f'Score: <strong style="color:{THEME["text"]}">{probability:.1%}</strong></span>'
+        f"</div>"
+    )
+
 
 def ensure_model():
     """Train model if artifact doesn't exist."""
@@ -57,104 +268,83 @@ def page_employee():
 
     if not token or not employee_id:
         # Demo mode: feature sliders + local scoring
-        st.sidebar.markdown("### Demo: Employee Assessment")
-        demo_employee_id = st.sidebar.text_input("Employee ID (for reference)", value="EID_001")
-
-        # ── Natural-language questionnaire ───────────────────────────────────────
-        # Maps human-readable questions to model features.
-        # Internal-only features (missing_ra, missing_mfs) get safe defaults (0 = not missing).
-
-        st.sidebar.markdown("### About your role")
-
-        tenure_years = st.sidebar.selectbox(
-            "How long have you been in your current role?",
-            options=[0, 1, 2, 3, 4, 5],
-            format_func=lambda x: [
-                "Less than 6 months", "6–12 months", "1–2 years",
-                "2–5 years", "5–10 years", "10+ years",
-            ][x],
-            index=2,
-        )
-        # Map to approximate days
-        tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
-        tenure_days = tenure_map.get(tenure_years, 547)
-
-        st.sidebar.markdown("### How have you been feeling?")
-
-        energy = st.sidebar.slider(
-            "Energy levels over the past few weeks",
-            min_value=1.0,
-            max_value=10.0,
-            value=5.0,
-            step=0.5,
-            help="1 = completely drained, 10 = full of energy",
-        )
-
-        workload = st.sidebar.slider(
-            "Current workload intensity",
-            min_value=0.0,
-            max_value=10.0,
-            value=5.0,
-            step=0.5,
-            help="0 = very light, 10 = overwhelming",
-        )
-
-        st.sidebar.markdown("### Your working situation")
-
-        wfh = st.sidebar.radio(
-            "Do you have a suitable work-from-home setup?",
-            options=["Yes", "No", "Not applicable"],
-            index=0,
-            horizontal=True,
-        )
-        wfh_setup = 1 if wfh == "Yes" else 0
-
-        company = st.sidebar.radio(
-            "Which best describes your organisation?",
-            options=["Product company", "Service company"],
-            index=0,
-            horizontal=True,
-        )
-        company_type = 0 if company == "Product company" else 1
-
-        st.sidebar.markdown("### Your level")
-
-        seniority_tier = st.sidebar.selectbox(
-            "Your role level",
-            options=[0, 1],
-            format_func=lambda x: "Senior (manager / principal / director)" if x == 1 else "Junior / individual contributor",
-            index=0,
-        )
-
-        # ── Build features dict ───────────────────────────────────────────────
-        # Internal-only features: defaults (0 = not missing, normal case for demo)
-        features = {
-            "tenure_days": float(tenure_days),
-            "mental_fatigue_score": float(energy),
-            "resource_allocation": float(workload),
-            "wfh_setup": float(wfh_setup),
-            "company_type": float(company_type),
-            "seniority_tier": float(seniority_tier),
-            # Internal audit features — not shown to employees, defaults only
-            "missing_ra": 0.0,
-            "missing_mfs": 0.0,
-            "tenure_fatigue": 5.0,
-            "tenure_workload": 5.0,
-        }
-
-        if st.sidebar.button("Run assessment"):
-            render_employee_view(
-                employee_id=demo_employee_id,
-                features=features,
-                seniority_tier=seniority_tier,
-                auth_token=None,
+        with st.sidebar:
+            st.markdown("### Demo Assessment")
+            st.caption("Answer a few questions to see your burnout risk profile.")
+            demo_employee_id = st.text_input(
+                "Your name or ID",
+                value="EID_001",
+                placeholder="e.g. Alex Chen",
+                help="Used only to label your results in this demo.",
             )
-        else:
-            st.info("Answer the questions above and click **Run assessment** to see your results.")
-            st.caption(
-                "ℹ️ Demo mode — results are calculated locally and never stored. "
-                "Sign in with your Employee ID to see your actual assessment."
+
+            st.markdown("#### About your role")
+            tenure_years = st.selectbox(
+                "Time in this role",
+                options=[0, 1, 2, 3, 4, 5],
+                format_func=lambda x: [
+                    "< 6 months", "6–12 months", "1–2 years",
+                    "2–5 years", "5–10 years", "10+ years",
+                ][x],
+                index=2,
             )
+            tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
+            tenure_days = tenure_map.get(tenure_years, 547)
+
+            st.markdown("#### How you've been feeling")
+            energy = st.slider(
+                "Energy level",
+                min_value=1.0, max_value=10.0, value=5.0, step=0.5,
+                help="1 = completely drained · 10 = full of energy",
+            )
+            workload = st.slider(
+                "Workload intensity",
+                min_value=0.0, max_value=10.0, value=5.0, step=0.5,
+                help="0 = very light · 10 = overwhelming",
+            )
+
+            st.markdown("#### Your situation")
+            wfh = st.radio(
+                "Suitable WFH setup?",
+                options=["Yes", "No", "N/A"],
+                index=0, horizontal=True,
+            )
+            wfh_setup = 1 if wfh == "Yes" else 0
+            seniority_tier = st.selectbox(
+                "Role level",
+                options=[0, 1],
+                format_func=lambda x: "Senior / Principal / Director" if x == 1 else "Junior / Individual Contributor",
+                index=0,
+            )
+
+            features = {
+                "tenure_days": float(tenure_days),
+                "mental_fatigue_score": float(energy),
+                "resource_allocation": float(workload),
+                "wfh_setup": float(wfh_setup),
+                "company_type": 0.0,
+                "seniority_tier": float(seniority_tier),
+                "missing_ra": 0.0,
+                "missing_mfs": 0.0,
+                "tenure_fatigue": 5.0,
+                "tenure_workload": 5.0,
+            }
+
+            st.markdown("---")
+            if st.button("Run assessment", use_container_width=True):
+                render_employee_view(
+                    employee_id=demo_employee_id,
+                    features=features,
+                    seniority_tier=seniority_tier,
+                    auth_token=None,
+                )
+            else:
+                st.info("Answer the questions above and click **Run assessment**.")
+
+        st.caption(
+            "Demo mode — results are calculated locally and never stored. "
+            "Sign in to see your actual assessment."
+        )
         return
 
     # Authenticated: fetch from backend
@@ -213,26 +403,21 @@ def page_hr():
         st.error(f"Unexpected error: {e}")
         return
 
-    # M6-08: 24h employee-first visibility gate
     visibility_locked = trends_data.get("visibility_locked", False)
     locked_until = trends_data.get("visibility_locked_until")
     if visibility_locked:
         st.info(
-            "📋 **Results pending** — Risk distribution and team-level scores are "
-            "hidden for 24 hours after cycle close to give employees first access "
-            + (f"to their own scores (unlocks at {locked_until})." if locked_until else "")
+            "Results are hidden for 24 hours after cycle close "
+            "so employees see their scores first."
+            + (f" Unlocks at {locked_until}." if locked_until else "")
         )
 
-    # Extract trends data
     tiers = trends_data.get("tiers", {"low": 0, "moderate": 0, "high": 0, "critical": 0})
-    total_scored = trends_data.get("total_scored", 0)
     scores = [
         {"risk_tier": tier, "burnout_probability": None}
         for tier, count in tiers.items()
         for _ in range(count)
     ]
-
-    # Extract teams data (may be empty if gate active)
     teams = [
         {
             "name": t["name"],
@@ -242,23 +427,15 @@ def page_hr():
         }
         for t in teams_data.get("teams", [])
     ]
-
-    # Extract exclusions
     by_category = exclusions_data.get("by_category", {})
     exclusions = {
         "on_leave": by_category.get("on_leave", 0),
         "protected_process": by_category.get("protected_process", 0),
         "grievance_cooldown": by_category.get("grievance_cooldown", 0),
     }
-
-    # Extract latest cycle participation
     cycles = participation_data.get("cycles", [])
-    responded = 0
-    scoreable = 0
-    if cycles:
-        latest = cycles[0]
-        responded = latest.get("responded", 0)
-        scoreable = latest.get("total_eligible", 0)
+    responded = cycles[0].get("responded", 0) if cycles else 0
+    scoreable = cycles[0].get("total_eligible", 0) if cycles else 0
 
     render_hr_view(
         scores=scores,
@@ -272,10 +449,9 @@ def page_hr():
 def page_manager():
     token = st.session_state.get("auth_token")
     if not token:
-        st.warning("Sign in with your Employee ID to access the manager dashboard.")
+        st.warning("Sign in to access the Manager dashboard.")
         return
 
-    # Get the manager's own team
     try:
         team_info = get_my_team(token)
     except ApiError as e:
@@ -330,11 +506,16 @@ def page_reviewer(token: str):
 
 
 def main():
-    st.set_page_config(page_title="Oraclaire", page_icon=":brain:", layout="wide")
+    st.set_page_config(
+        page_title="Oraclaire — Burnout Risk",
+        page_icon=":brain:",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
 
+    _inject_theme()
     ensure_model()
 
-    # Auth: simple employee-id login stored in session state
     if "auth_token" not in st.session_state:
         st.session_state.auth_token = None
     if "auth_employee_id" not in st.session_state:
@@ -343,14 +524,16 @@ def main():
         st.session_state.auth_role = None
 
     with st.sidebar:
-        st.markdown("### Sign in")
+        st.markdown("### Oraclaire")
+        st.caption("Burnout Risk Assessment")
+        st.markdown("---")
+
         login_emp_id = st.text_input(
             "Employee ID",
             value=st.session_state.auth_employee_id or "",
-            placeholder="Enter your employee ID",
-            key="login_emp_id_input",
+            placeholder="e.g. 1",
         )
-        if st.button("Sign in", key="sign_in_btn"):
+        if st.button("Sign in", use_container_width=True):
             if login_emp_id.strip():
                 try:
                     auth_data = login(login_emp_id.strip())
@@ -362,18 +545,24 @@ def main():
                     st.error(str(e))
                 except Exception as e:
                     st.error(f"Login error: {e}")
+
         if st.session_state.auth_token:
-            st.success(f"Signed in as {st.session_state.auth_employee_id} ({st.session_state.auth_role})")
-            if st.button("Sign out", key="sign_out_btn"):
+            st.success(f"**{st.session_state.auth_employee_id}**")
+            st.caption(f"Role: {st.session_state.auth_role}")
+            st.markdown("---")
+            if st.button("Sign out", use_container_width=True):
                 st.session_state.auth_token = None
                 st.session_state.auth_employee_id = None
                 st.session_state.auth_role = None
                 st.rerun()
 
-    page = st.sidebar.selectbox(
-        "View",
-        options=["Employee", "HR Aggregate", "Manager", "Reviewer"],
-    )
+        st.markdown("---")
+        st.markdown("#### Navigate")
+        page = st.selectbox(
+            "View",
+            options=["Employee", "HR Aggregate", "Manager", "Reviewer"],
+            label_visibility="collapsed",
+        )
 
     if page == "Employee":
         page_employee()
@@ -383,7 +572,7 @@ def main():
         page_manager()
     elif page == "Reviewer":
         if not st.session_state.auth_token:
-            st.warning("Sign in with your Employee ID to access the reviewer queue.")
+            st.warning("Sign in to access the Reviewer queue.")
             return
         role = st.session_state.get("auth_role", "")
         if role not in ("system_admin", "hr_admin"):
