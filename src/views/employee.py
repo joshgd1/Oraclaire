@@ -130,38 +130,122 @@ def render_data_ownership(employee_id: str):
         st.button("Delete my data", key=f"delete_{employee_id}")
 
 
-def render_employee_view(
-    employee_id: str,
-    features: dict,
-    seniority_tier: int,
-    model_path: str | None = None,
-):
-    """Render the full employee dashboard for one scored employee."""
-    render_header()
+def render_trajectory(trajectory_data: dict | None):
+    """Render trajectory classification with visual indicator."""
+    if not trajectory_data:
+        return
 
-    try:
-        kwargs = {
-            "employee_id": employee_id,
-            "features": features,
-            "seniority_tier": seniority_tier,
-        }
-        if model_path:
-            kwargs["model_path"] = model_path
-        result = score_employee(**kwargs)
-    except FileNotFoundError:
-        st.error(
-            "Model not found. Run the training pipeline first: "
-            "`python -m src.model.train`"
+    trajectory = trajectory_data.get("trajectory", "no_trajectory")
+
+    st.divider()
+    st.subheader("Your trend")
+
+    if trajectory == "no_trajectory":
+        st.info(
+            "Not enough assessment history yet to show a trend. "
+            "Complete at least two assessment cycles to see your trajectory."
         )
         return
-    except ValueError as e:
-        st.error(f"Input validation error: {e}")
-        return
 
-    render_tier_badge(result["risk_tier"], result["burnout_probability"])
-    render_tier_explanation(result["risk_tier"])
-    render_shap_breakdown(result["shap"])
-    render_resources(result["shap"], result["risk_tier"])
+    delta = trajectory_data.get("delta")
+    current = trajectory_data.get("current_score")
+    previous = trajectory_data.get("previous_score")
+    threshold = trajectory_data.get("threshold_used", 0.10)
+
+    icons = {
+        "improved": "📉",
+        "worsened": "📈",
+        "held": "➡️",
+    }
+    colors = {
+        "improved": "#22c55e",
+        "worsened": "#ef4444",
+        "held": "#f59e0b",
+    }
+    labels = {
+        "improved": "Improving",
+        "worsened": "Worsening",
+        "held": "Holding steady",
+    }
+
+    icon = icons.get(trajectory, "")
+    color = colors.get(trajectory, "#888")
+    label = labels.get(trajectory, trajectory.title())
+
+    delta_abs = abs(delta) if delta is not None else 0
+
+    st.markdown(
+        f'<div style="padding:16px;border-radius:8px;background:{color}22;'
+        f'border-left:4px solid {color};margin-bottom:16px">'
+        f'<span style="font-size:24px">{icon}</span> '
+        f'<strong style="color:{color};font-size:18px">{label}</strong>'
+        f'<p style="margin:4px 0 0 0;color:#555">'
+        f'Burnout score changed by <strong>{delta_abs:.1%}</strong> '
+        f'(from {previous:.0%} to {current:.0%}, threshold ±{threshold:.0%})'
+        f'</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_employee_view(
+    employee_id: str,
+    features: dict | None = None,
+    seniority_tier: int | None = None,
+    model_path: str | None = None,
+    *,
+    risk_tier: str | None = None,
+    burnout_probability: float | None = None,
+    shap: list[dict] | None = None,
+    resources: list[str] | None = None,
+    trajectory_data: dict | None = None,
+):
+    """Render the full employee dashboard.
+
+    Two modes:
+    - Local scoring: pass features + seniority_tier (calls score_employee)
+    - API-backed: pass risk_tier + burnout_probability + shap + resources
+    """
+    render_header()
+
+    if features is not None and seniority_tier is not None:
+        # Local scoring path (demo mode)
+        try:
+            kwargs: dict = {
+                "employee_id": employee_id,
+                "features": features,
+                "seniority_tier": seniority_tier,
+            }
+            if model_path:
+                kwargs["model_path"] = model_path
+            result = score_employee(**kwargs)
+        except FileNotFoundError:
+            st.error(
+                "Model not found. Run the training pipeline first: "
+                "`python -m src.model.train`"
+            )
+            return
+        except ValueError as e:
+            st.error(f"Input validation error: {e}")
+            return
+        tier = result["risk_tier"]
+        probability = result["burnout_probability"]
+        shap_decomposition = result["shap"]
+        resources_out = result.get("resources", [])
+    else:
+        # API-backed path
+        if risk_tier is None or burnout_probability is None:
+            st.error("Either provide features+seniority_tier or risk_tier+burnout_probability.")
+            return
+        tier = risk_tier
+        probability = burnout_probability
+        shap_decomposition = shap or []
+        resources_out = resources or []
+
+    render_tier_badge(tier, probability)
+    render_tier_explanation(tier)
+    render_shap_breakdown(shap_decomposition)
+    render_resources(shap_decomposition, tier)
 
     st.divider()
     render_data_ownership(employee_id)
+    render_trajectory(trajectory_data)

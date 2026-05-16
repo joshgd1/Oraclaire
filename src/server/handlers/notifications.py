@@ -7,6 +7,7 @@ POST /api/notifications/{id}/read — mark a notification as read
 
 from __future__ import annotations
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -57,8 +58,6 @@ async def mark_read(request: Request) -> JSONResponse:
 
 
 # Router
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/", list_notifications, methods=["GET"])
 router.add_api_route("/{id}/read", mark_read, methods=["POST"])

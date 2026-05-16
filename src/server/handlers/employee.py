@@ -9,20 +9,23 @@ GET    /api/employee/me/shap     — own SHAP decomposition (latest score)
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.model.entities import Employee, RiskScore, Role
-from src.model.serve import get_resources_for_score
+from src.config import FEATURE_LABELS
+from src.model.entities import AuditLog, Employee, RiskScore, Role
 from src.model.entities._db import get_session_factory
+from src.model.serve import get_resources_for_score
 from src.model.services.permission import (
     Action,
     PermissionDenied,
     PermissionService,
 )
+from src.model.services.trajectory import TrajectoryClassificationService
 
 
 def _role_from_user(user: Any) -> Role:
@@ -115,7 +118,7 @@ async def update_me(request: Request) -> JSONResponse:
             from src.model.entities import ConsentStatus
             try:
                 emp.consent_status = ConsentStatus(body["consent_status"])
-                emp.consent_timestamp = datetime.now(timezone.utc)
+                emp.consent_timestamp = datetime.now(UTC)
             except ValueError:
                 return JSONResponse(
                     {"error": f"invalid consent_status: {body['consent_status']}"},
@@ -143,7 +146,7 @@ async def get_my_scores(request: Request) -> JSONResponse:
             viewer_id=user.user_id,
             viewer_role=role,
             action=Action.READ_OWN_SCORE,
-            target_employee_id=None,
+            target_employee_id=int(user.user_id),
         )
     except PermissionDenied as e:
         return JSONResponse({"error": str(e)}, status_code=403)
@@ -185,7 +188,7 @@ async def get_my_shap(request: Request) -> JSONResponse:
             viewer_id=user.user_id,
             viewer_role=role,
             action=Action.READ_OWN_SCORE,
-            target_employee_id=None,
+            target_employee_id=int(user.user_id),
         )
     except PermissionDenied as e:
         return JSONResponse({"error": str(e)}, status_code=403)
@@ -212,16 +215,210 @@ async def get_my_shap(request: Request) -> JSONResponse:
 async def get_employee_pulse_trend(request: Request) -> JSONResponse:
     """GET /api/employee/{id}/pulse-trend — forward to pulse module."""
     from src.server.handlers.pulse import get_pulse_trend as _trend
+
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    role = _role_from_user(user)
+    path_params = request.path_params
+    target_id = path_params.get("id") if path_params else None
+
+    # M8-04: HRIS Export Guard — employees can only access their own pulse trend
+    if role == Role.EMPLOYEE and target_id and str(target_id) != str(user.user_id):
+        return JSONResponse(
+            {
+                "error": "BLOCKED_HRIS_EXPORT",
+                "code": "BLOCKED_HRIS_EXPORT",
+                "message": "Employees can only access their own pulse trend data.",
+            },
+            status_code=403,
+        )
+
+    # Managers cannot access individual employee trend data
+    if role == Role.MANAGER:
+        return JSONResponse(
+            {
+                "error": "BLOCKED_HRIS_EXPORT",
+                "code": "BLOCKED_HRIS_EXPORT",
+                "message": "Managers cannot access individual employee pulse trend data. Use team aggregate endpoints.",
+            },
+            status_code=403,
+        )
+
     return await _trend(request)
 
 
-# Router — FastAPI APIRouter
-from fastapi import APIRouter
+async def get_my_explanation(request: Request) -> JSONResponse:
+    """
+    GET /api/employee/me/explanation — human-readable SHAP breakdown in plain language.
 
+    Returns: {"employee_id", "score", "tier", "generated_at",
+              "summary": "Your score was driven primarily by X...",
+              "factors": [{"label": "...", "direction": "...", "impact_pct": N}]}
+    Required for EU AI Act Art. 13 right-to-explanation.
+    Audit log entry on every invocation (M1-11).
+    """
+    from src.config import FEATURE_LABELS as FL  # local to avoid top-level config load
+
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    role = _role_from_user(user)
+    svc = PermissionService(get_session_factory()())
+    try:
+        svc.check(
+            viewer_id=user.user_id,
+            viewer_role=role,
+            action=Action.READ_OWN_SCORE,
+            target_employee_id=int(user.user_id),
+        )
+    except PermissionDenied as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        emp = session.query(Employee).filter(
+            Employee.id == int(user.user_id)
+        ).first()
+        if not emp:
+            return JSONResponse({"error": "employee not found"}, status_code=404)
+
+        score = session.query(RiskScore).filter(
+            RiskScore.employee_id == emp.id
+        ).order_by(RiskScore.scored_at.desc()).first()
+        if not score:
+            return JSONResponse({"error": "no score available"}, status_code=404)
+
+        # Audit log entry (M1-11 + M8-06)
+        audit = AuditLog(
+            actor_id=str(user.user_id),
+            action="employee.explanation_requested",
+            target_entity_type="risk_score",
+            target_entity_id=str(score.id),
+            timestamp=datetime.now(UTC),
+            metadata_json={
+                "employee_id": emp.id,
+                "cycle_id": score.cycle_id,
+            },
+        )
+        session.add(audit)
+        session.commit()
+
+        # Build human-readable explanation from SHAP values
+        shap_list = score.shap_values or []
+        if not shap_list:
+            return JSONResponse({
+                "employee_id": emp.id,
+                "score": round(score.numeric_score, 4),
+                "tier": score.risk_tier,
+                "generated_at": datetime.now(UTC).isoformat(),
+                "summary": (
+                    "Your burnout risk score was calculated but detailed "
+                    "factor information is not available for this assessment."
+                ),
+                "factors": [],
+            })
+
+        # Sort by absolute impact (shap_list is list[dict] with feature, impact_value keys)
+        sorted_factors = sorted(
+            shap_list,
+            key=lambda x: abs(x.get("impact_value", 0)),
+            reverse=True,
+        )
+
+        total_abs = sum(abs(x.get("impact_value", 0)) for x in shap_list) or 1.0
+        factors = []
+        for item in sorted_factors[:5]:
+            feat = item.get("feature", "")
+            raw_impact = item.get("impact_value", 0)
+            label = FL.get(feat, feat.replace("_", " ").title())
+            direction = "increases" if raw_impact > 0 else "decreases"
+            impact_pct = round(abs(raw_impact) / total_abs * 100, 1)
+            factors.append({
+                "label": label,
+                "feature": feat,
+                "direction": direction,
+                "impact_pct": impact_pct,
+            })
+
+        top = factors[0] if factors else None
+        if top:
+            summary = (
+                f"Your burnout risk score was driven primarily by **{top['label']}**. "
+                f"This factor {'increased' if top['direction'] == 'increases' else 'decreased'} your risk. "
+                f"The top contributing factors were: "
+                + ", ".join(f["label"] for f in factors[:3])
+                + "."
+            )
+        else:
+            summary = "Your burnout risk score was calculated across multiple factors."
+
+        return JSONResponse({
+            "employee_id": emp.id,
+            "score": round(score.numeric_score, 4),
+            "tier": score.risk_tier,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "summary": summary,
+            "factors": factors,
+        })
+    finally:
+        session.close()
+
+
+async def get_my_trajectory(request: Request) -> JSONResponse:
+    """GET /api/employee/me/trajectory — trajectory classification for the authenticated employee."""
+    user = getattr(request.state, "user", None)
+    if not user:
+        return JSONResponse({"error": "unauthenticated"}, status_code=401)
+
+    role = _role_from_user(user)
+    svc = PermissionService(get_session_factory()())
+    try:
+        svc.check(
+            viewer_id=user.user_id,
+            viewer_role=role,
+            action=Action.READ_OWN_SCORE,
+            target_employee_id=int(user.user_id),
+        )
+    except PermissionDenied as e:
+        return JSONResponse({"error": str(e)}, status_code=403)
+
+    factory = get_session_factory()
+    session = factory()
+    try:
+        emp = session.query(Employee).filter(
+            Employee.id == int(user.user_id)
+        ).first()
+        if not emp:
+            return JSONResponse({"error": "employee not found"}, status_code=404)
+
+        result = TrajectoryClassificationService(session).classify(
+            employee_id=emp.id,
+            organisation_id=emp.organisation_id,
+        )
+        return JSONResponse({
+            "employee_id": result.employee_id,
+            "trajectory": result.trajectory,
+            "current_score": result.current_score,
+            "previous_score": result.previous_score,
+            "delta": result.delta,
+            "cycles_compared": result.cycles_compared,
+            "threshold_used": result.threshold_used,
+        })
+    finally:
+        session.close()
+
+
+# Router — FastAPI APIRouter
 router = APIRouter()
 # Paths are relative to the include_router prefix in app.py
 router.add_api_route("/me", get_me, methods=["GET"])
 router.add_api_route("/me", update_me, methods=["PATCH"])
 router.add_api_route("/me/scores", get_my_scores, methods=["GET"])
 router.add_api_route("/me/shap", get_my_shap, methods=["GET"])
+router.add_api_route("/me/trajectory", get_my_trajectory, methods=["GET"])
+router.add_api_route("/me/explanation", get_my_explanation, methods=["GET"])
 router.add_api_route("/{id}/pulse-trend", get_employee_pulse_trend, methods=["GET"])

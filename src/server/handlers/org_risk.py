@@ -13,6 +13,7 @@ Access: hr_admin (all teams), manager (own team only).
 
 from __future__ import annotations
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -112,7 +113,5 @@ async def get_risk_indicators(request: Request) -> JSONResponse:
 
 
 # Router
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/risk-indicators", get_risk_indicators, methods=["GET"])

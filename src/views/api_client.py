@@ -145,6 +145,185 @@ def override_review(token: str, review_id: int, new_tier: str, reason: str) -> d
     return resp.json()
 
 
+# ── Employee endpoints ─────────────────────────────────────────────────────────
+
+
+def get_employee_scores(token: str) -> dict[str, Any]:
+    """
+    GET /api/employee/me/scores — latest score for the authenticated employee.
+    Returns {"scores": [{"id", "cycle_id", "numeric_score", "risk_tier",
+                         "model_version", "scored_at", "resources"}]}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/employee/me/scores",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch employee scores: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_employee_shap(token: str) -> dict[str, Any]:
+    """
+    GET /api/employee/me/shap — SHAP decomposition for the latest score.
+    Returns {"shap_values": [...], "seniority_tier_at_score": N, "resources": [...]}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/employee/me/shap",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch SHAP values: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_employee_trajectory(token: str) -> dict[str, Any]:
+    """
+    GET /api/employee/me/trajectory — trajectory classification for the authenticated employee.
+    Returns {"employee_id", "trajectory", "current_score", "previous_score",
+             "delta", "cycles_compared", "threshold_used"}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/employee/me/trajectory",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch trajectory: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_employee_explanation(token: str) -> dict[str, Any]:
+    """
+    GET /api/employee/me/explanation — human-readable SHAP breakdown in plain language.
+    Returns {"employee_id", "score", "tier", "generated_at", "summary", "factors": [...]}.
+    Required for EU AI Act Art. 13 right-to-explanation.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/employee/me/explanation",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch explanation: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+# ── Manager endpoints ────────────────────────────────────────────────────────
+
+
+def get_my_team(token: str) -> dict[str, Any]:
+    """
+    GET /api/manager/me — the authenticated manager's own team info.
+    Returns {"team_id", "team_name", "team_size"}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/manager/me",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch manager team: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_team_aggregate(token: str, team_id: int) -> dict[str, Any]:
+    """
+    GET /api/team/{id}/aggregate — team-level tier distribution and trend.
+    Returns {"team_id", "team_name", "team_size", "suppressed", "cycles": [...],
+             "tier_distribution", "high_critical_pct", "consecutive_weeks_elevated"}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/team/{team_id}/aggregate",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch team aggregate: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_team_recommendations(token: str, team_id: int) -> dict[str, Any]:
+    """
+    GET /api/team/{id}/recommendations — team SHAP factors + matched resources.
+    Returns {"team_id", "worst_tier", "top_factors": [...], "recommendations": [...]}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/team/{team_id}/recommendations",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch team recommendations: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
+def get_team_trajectory(token: str, team_id: int) -> dict[str, Any]:
+    """
+    GET /api/team/{id}/trajectory — aggregated trajectory for all team members.
+    Returns {"team_id", "team_trajectory", "distribution": {...},
+             "average_delta", "scored_count", "members": [...]}.
+    Raises ApiError on failure.
+    """
+    try:
+        resp = requests.get(
+            f"{API_BASE_URL}/api/team/{team_id}/trajectory",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+    except requests.ConnectionError as exc:
+        raise ApiError(f"Could not connect to API at {API_BASE_URL}") from exc
+
+    if not resp.ok:
+        raise ApiError(f"Failed to fetch team trajectory: {resp.text}", status_code=resp.status_code)
+
+    return resp.json()
+
+
 # ── HR Aggregate endpoints ─────────────────────────────────────────────────────
 
 

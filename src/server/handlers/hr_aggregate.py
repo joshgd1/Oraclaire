@@ -13,23 +13,25 @@ the first window to view their own scores.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from src.config import MIN_TEAM_SIZE
 from src.model.entities import (
     AssessmentCycle,
     AssessmentResponse,
+    CycleStatus,
     Employee,
-    Exclusion,
     RiskScore,
     Role,
     Team,
 )
 from src.model.entities._db import get_session_factory
-from src.config import MIN_TEAM_SIZE
+from src.model.services.deployment_parameter import DeploymentParameterService
 from src.model.services.permission import (
     Action,
     PermissionDenied,
@@ -44,8 +46,13 @@ def _is_gate_active(cycle) -> bool:
     """Return True if the cycle is still within the 24h employee-first window."""
     if cycle.closed_at is None:
         return True
-    now = datetime.now(timezone.utc)
-    closed_utc = cycle.closed_at.replace(tzinfo=timezone.utc)
+    now = datetime.now(UTC)
+    closed_at = cycle.closed_at
+    # Normalise to UTC-aware: if naive, assume UTC; if already aware, convert
+    if closed_at.tzinfo is None:
+        closed_utc = closed_at.replace(tzinfo=UTC)
+    else:
+        closed_utc = closed_at.astimezone(UTC)
     gate_end = closed_utc + timedelta(hours=_GATE_HOURS)
     return now < gate_end
 
@@ -55,7 +62,10 @@ def _gate_response_fields(cycle):
     closed = cycle.closed_at
     if closed is None:
         return {"visibility_locked": True, "visibility_locked_until": None}
-    closed_utc = closed.replace(tzinfo=timezone.utc)
+    if closed.tzinfo is None:
+        closed_utc = closed.replace(tzinfo=UTC)
+    else:
+        closed_utc = closed.astimezone(UTC)
     locked_until = closed_utc + timedelta(hours=_GATE_HOURS)
     return {
         "visibility_locked": _is_gate_active(cycle),
@@ -96,7 +106,7 @@ async def get_trends(request: Request) -> JSONResponse:
         # Latest closed cycle
         latest_cycle = session.query(AssessmentCycle).filter(
             AssessmentCycle.organisation_id == org_id,
-            AssessmentCycle.status == "closed",
+            AssessmentCycle.status == CycleStatus.CLOSED,
         ).order_by(AssessmentCycle.closed_at.desc()).first()
 
         if not latest_cycle:
@@ -193,12 +203,13 @@ async def get_teams(request: Request) -> JSONResponse:
         # Latest closed cycle for gate check
         latest_cycle = session.query(AssessmentCycle).filter(
             AssessmentCycle.organisation_id == org_id,
-            AssessmentCycle.status == "closed",
+            AssessmentCycle.status == CycleStatus.CLOSED,
         ).order_by(AssessmentCycle.closed_at.desc()).first()
 
         gate_fields = _gate_response_fields(latest_cycle) if latest_cycle else {
             "visibility_locked": True, "visibility_locked_until": None}
 
+        dp_svc = DeploymentParameterService(session)
         teams = session.query(Team).filter(Team.organisation_id == org_id).all()
         result = []
         for team in teams:
@@ -229,7 +240,9 @@ async def get_teams(request: Request) -> JSONResponse:
                 ).count()
                 hc_pct = round(hc_count / total, 4) if total > 0 else 0.0
                 entry["high_critical_pct"] = hc_pct
-                entry["consecutive_weeks_elevated"] = 0  # populated from org_risk endpoint
+                entry["consecutive_weeks_elevated"] = (
+                    dp_svc.get_typed(org_id, f"ort_consecutive_{team.id}") or 0
+                )
             result.append(entry)
 
         return JSONResponse({"teams": result, **gate_fields})
@@ -286,8 +299,6 @@ async def get_participation(request: Request) -> JSONResponse:
 
 
 # Router — FastAPI APIRouter
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/trends", get_trends, methods=["GET"])
 router.add_api_route("/exclusions", get_exclusions, methods=["GET"])

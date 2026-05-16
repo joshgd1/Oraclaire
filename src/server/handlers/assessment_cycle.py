@@ -9,16 +9,20 @@ POST   /api/cycle/{id}/close   — close a cycle and trigger scoring (hr_admin, 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+import structlog
+from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from src.audit.alerts import get_active_alerts
 from src.model.entities import AssessmentCycle, CycleStatus, CycleType, Role
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import Action, PermissionDenied, PermissionService
-from src.audit.alerts import get_active_alerts
+
+logger = structlog.get_logger(__name__)
 
 
 async def _trigger_scoring_on_close(cycle_id: int, organisation_id: int) -> None:
@@ -31,6 +35,27 @@ async def _trigger_scoring_on_close(cycle_id: int, organisation_id: int) -> None
     from src.server.handlers.scoring import _run_scoring_async
 
     await _run_scoring_async(cycle_id, organisation_id)
+
+
+def _trigger_retention_on_close(organisation_id: int) -> None:
+    """
+    M8-02: Fire-and-forget retention purge after a cycle closes.
+
+    Checks whether any cycles have passed the retention threshold for this
+    organisation and purges expired individual-level records.
+    """
+    import threading
+
+    def _run():
+        try:
+            from src.model.services.retention import RetentionEngine
+            result = RetentionEngine.for_organisation(organisation_id)
+            logger.info("retention.cycle_close_trigger", organisation_id=organisation_id, result=result)
+        except Exception:
+            logger.exception("retention.cycle_close_failed", organisation_id=organisation_id)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
 
 
 def _require_role(user: Any) -> Role:
@@ -98,7 +123,7 @@ async def create_cycle(request: Request) -> JSONResponse:
         cycle = AssessmentCycle(
             organisation_id=org_id,
             cycle_type=cycle_type,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             status=CycleStatus.OPEN,
         )
         session.add(cycle)
@@ -136,7 +161,7 @@ def _notify_eligible_employees(cycle_id: int, organisation_id: int, cycle_type: 
     Consent-aware: withdrawn employees are excluded.
     No score content in the notification.
     """
-    from src.model.entities import Employee, Team, ConsentStatus
+    from src.model.entities import ConsentStatus, Employee, Team
     from src.model.services.notification import notify_cycle_opened
 
     factory = get_session_factory()
@@ -271,11 +296,14 @@ async def close_cycle(request: Request) -> JSONResponse:
             return JSONResponse({"error": "cycle already closed"}, status_code=409)
 
         cycle.status = CycleStatus.CLOSED
-        cycle.closed_at = datetime.now(timezone.utc)
+        cycle.closed_at = datetime.now(UTC)
         session.commit()
 
         # M2-05: auto-trigger async scoring after cycle closes
         asyncio.create_task(_trigger_scoring_on_close(cycle.id, org_id))
+
+        # M8-02: fire-and-forget retention purge after cycle closes
+        _trigger_retention_on_close(org_id)
 
         return JSONResponse({
             "id": cycle.id,
@@ -341,8 +369,9 @@ async def submit_cycle_response(request: Request) -> JSONResponse:
         if cycle.organisation_id != org_id:
             return JSONResponse({"error": "cycle not in your organisation"}, status_code=403)
 
-        from src.model.entities import AssessmentResponse
         from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        from src.model.entities import AssessmentResponse
 
         stored = 0
         for item in responses:
@@ -425,8 +454,8 @@ async def submit_cycle(request: Request) -> JSONResponse:
         if cycle.organisation_id != org_id:
             return JSONResponse({"error": "cycle not in your organisation"}, status_code=403)
 
+
         from src.model.entities import AssessmentResponse
-        from datetime import timezone
 
         # Mark all unsubmitted responses for this employee/cycle as submitted
         updated = session.query(AssessmentResponse).filter(
@@ -434,7 +463,7 @@ async def submit_cycle(request: Request) -> JSONResponse:
             AssessmentResponse.employee_id == employee_id,
             AssessmentResponse.submitted_at.is_(None),
         ).update(
-            {"submitted_at": datetime.now(timezone.utc)},
+            {"submitted_at": datetime.now(UTC)},
             synchronize_session=False,
         )
         session.commit()
@@ -505,7 +534,6 @@ async def send_midpoint_reminder(request: Request) -> JSONResponse:
         session.close()
 
     # Identify non-respondents
-    from src.model.entities import AssessmentResponse, Employee, Team, ConsentStatus
     try:
         result = _send_midpoint_reminder(cycle_id, org_id, cycle.cycle_type.value)
         return JSONResponse(result)
@@ -522,7 +550,7 @@ def _send_midpoint_reminder(cycle_id: int, organisation_id: int, cycle_type: str
     Called by the reminder endpoint handler. Identifies eligible non-respondents
     and sends notifications.
     """
-    from src.model.entities import AssessmentResponse, Employee, Team, ConsentStatus
+    from src.model.entities import AssessmentResponse, ConsentStatus, Employee, Team
     from src.model.services.notification import notify_midpoint_reminder
 
     factory = get_session_factory()
@@ -563,7 +591,7 @@ def _send_midpoint_reminder(cycle_id: int, organisation_id: int, cycle_type: str
                 organisation_id=organisation_id,
                 cycle_type=cycle_type,
                 employee_ids=non_respondent_ids,
-                cycle_started_at=datetime.now(timezone.utc),
+                cycle_started_at=datetime.now(UTC),
             )
 
         return {"reminder_sent_count": len(non_respondent_ids)}
@@ -572,8 +600,6 @@ def _send_midpoint_reminder(cycle_id: int, organisation_id: int, cycle_type: str
 
 
 # Router — FastAPI APIRouter
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/", list_cycles, methods=["GET"])
 router.add_api_route("/", create_cycle, methods=["POST"])

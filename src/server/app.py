@@ -16,14 +16,14 @@ _root = str(Path(__file__).resolve().parent.parent.parent)
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv()
+load_dotenv()  # noqa: E402
 
-import structlog
-from nexus import Nexus
+import structlog  # noqa: E402
+from nexus import Nexus  # noqa: E402
 
-from src.server.auth import JWT_CONFIG, make_auth_plugin
+from src.server.auth import make_auth_plugin  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -69,9 +69,11 @@ def _register_endpoints(app: Nexus) -> None:
     from src.server.handlers import (
         assessment_cycle,
         auth,
+        data_rights,
         employee,
         health,
         hr_aggregate,
+        manager,
         notifications,
         org_risk,
         pulse,
@@ -82,12 +84,14 @@ def _register_endpoints(app: Nexus) -> None:
     app.include_router(auth.router, prefix="/api")
     app.include_router(pulse.router, prefix="/api/pulse")
     app.include_router(employee.router, prefix="/api/employee")
+    app.include_router(data_rights.router, prefix="/api/employee")
     app.include_router(assessment_cycle.router, prefix="/api/cycle")
     app.include_router(hr_aggregate.router, prefix="/api/hr")
     app.include_router(org_risk.router, prefix="/api/org")
     app.include_router(scoring.router, prefix="/api/scoring")
     app.include_router(notifications.router, prefix="/api/notifications")
     app.include_router(review.router, prefix="/api/reviews")
+    app.include_router(manager.router, prefix="/api/team")
 
     # Health — no auth required (exempt in JWTConfig)
     app.register_endpoint("/health", ["GET"], health.health_check)

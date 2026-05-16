@@ -213,13 +213,12 @@ class PermissionService:
         target_team_id: int | None,
         target_org_id: int | None,
     ) -> bool:
-        # Managers: team aggregates only (min 5 members)
+        # Managers: team aggregates only (own team)
         if target_team_id is not None:
             team = self._get_team(target_team_id)
             if team is None:
                 return False
-            if team.member_count < self.MIN_TEAM_SIZE_FOR_MANAGER_VIEW:
-                return False
+            # Team-size suppression is handled at the handler level, not here
             if action == Action.READ_TEAM_AGGREGATE:
                 return True
             # Managers cannot see individual employee data via this path

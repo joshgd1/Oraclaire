@@ -27,6 +27,7 @@ _DEFAULTS: dict[str, Any] = {
     "participation_target_architecture": 0.40,
     "seniority_default_source": "hris_derived",
     "retention_months": 12,
+    "trajectory_threshold": 0.10,  # M5-07: delta below -0.10 = improved, above +0.10 = worsened
 }
 
 

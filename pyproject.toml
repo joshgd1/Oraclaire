@@ -3,11 +3,11 @@ requires = ["setuptools>=65.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "my-kailash-project"  # TODO: Replace with your project name
+name = "oraclaire"
 version = "0.1.0"
-description = "A Kailash SDK project"  # TODO: Replace with your project description
+description = "Workplace burnout risk scoring system — Copenhagen Burnout Inventory + XGBoost + SHAP"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}  # TODO: Replace with your info
+    {name = "Josh Dorai"}
 ]
 readme = "README.md"
 requires-python = ">=3.11"

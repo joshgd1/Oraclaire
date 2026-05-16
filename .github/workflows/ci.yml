@@ -1,0 +1,122 @@
+# Oraclaire — CI/CD Pipeline
+#
+# - Runs linting and tests on every PR
+# - Builds and pushes Docker images on merge to main
+# - Deploys to staging on main (manual gate for production)
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Unit Tests ───────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Python dependency cache
+        run: uv cache dir
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check src/ tests/ --output-format=github
+
+      - name: Type check
+        run: uv run mypy src/ --format=github
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short
+
+  # ── Docker Build ──────────────────────────────────────────────────────────────
+  docker:
+    needs: [test]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/oraclaire-api
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Extract metadata (tags, labels) for Streamlit
+        id: meta-streamlit
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/oraclaire-streamlit
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Streamlit image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.streamlit
+          push: true
+          tags: ${{ steps.meta-streamlit.outputs.tags }}
+          labels: ${{ steps.meta-streamlit.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ── Notify ────────────────────────────────────────────────────────────────────
+  notify:
+    needs: [docker]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Deployment ready
+        run: |
+          echo "Docker images published:"
+          echo "  API:       ghcr.io/${{ github.repository }}/oraclaire-api:${{ github.sha }}"
+          echo "  Streamlit: ghcr.io/${{ github.repository }}/oraclaire-streamlit:${{ github.sha }}"
+          echo ""
+          echo "To deploy, update your docker-compose.yml to use these image tags."

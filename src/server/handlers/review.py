@@ -13,8 +13,9 @@ Endpoints:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -307,7 +308,7 @@ async def approve_review(request: Request) -> JSONResponse:
 
         review.review_status = "approved"
         review.reviewer_id = int(user.user_id)
-        review.reviewed_at = datetime.now(timezone.utc)
+        review.reviewed_at = datetime.now(UTC)
 
         # Audit log entry (M1-11)
         audit = AuditLog(
@@ -315,7 +316,7 @@ async def approve_review(request: Request) -> JSONResponse:
             action="review.approved",
             target_entity_type="human_review",
             target_entity_id=str(review.id),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             metadata_json={
                 "employee_id": emp.id,
                 "risk_tier": score.risk_tier if score else None,
@@ -416,7 +417,7 @@ async def override_review(request: Request) -> JSONResponse:
         # Update the review record
         review.review_status = "overridden"
         review.reviewer_id = int(user.user_id)
-        review.reviewed_at = datetime.now(timezone.utc)
+        review.reviewed_at = datetime.now(UTC)
         review.override_reason = reason
         review.override_new_tier = new_tier
 
@@ -433,7 +434,7 @@ async def override_review(request: Request) -> JSONResponse:
             action="review.overridden",
             target_entity_type="human_review",
             target_entity_id=str(review.id),
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             metadata_json={
                 "employee_id": emp.id,
                 "original_tier": score.risk_tier if score else None,
@@ -462,8 +463,6 @@ async def override_review(request: Request) -> JSONResponse:
 
 
 # Router
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/pending", list_pending, methods=["GET"])
 router.add_api_route("/{review_id}", get_review, methods=["GET"])

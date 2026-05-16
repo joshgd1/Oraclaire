@@ -1,0 +1,79 @@
+# Oraclaire — Docker Compose for local dev and staging
+#
+# Usage:
+#   cp .env.example .env   # fill in values
+#   docker compose up      # starts all services
+#   docker compose exec api alembic upgrade head  # run migrations
+#
+# Ports:
+#   API:       http://localhost:8000
+#   Streamlit:  http://localhost:8501
+#   API docs:  http://localhost:8000/docs
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: oraclaire
+      POSTGRES_USER: ${POSTGRES_USER:-oraclaire}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oraclaire_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    health:
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      command: ["postgres", "-c", "log_statement=all"]
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oraclaire}:${POSTGRES_PASSWORD:-oraclaire_dev}@db:5432/oraclaire
+      NEXUS_JWT_SECRET: ${NEXUS_JWT_SECRET:?required for production}
+      NEXUS_API_PORT: "8000"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8501}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    health:
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    environment:
+      NEXUS_API_BASE_URL: http://api:8000
+      STREAMLIT_SERVER_PORT: "8501"
+      STREAMLIT_SERVER_HEADLESS: "true"
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "8501:8501"
+
+  # Run Alembic migrations — run once then exit
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-oraclaire}:${POSTGRES_PASSWORD:-oraclaire_dev}@db:5432/oraclaire
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres_data:

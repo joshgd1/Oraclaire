@@ -104,25 +104,23 @@ def _get_resources(shap_features: list[dict]) -> list[str]:
     return RESOURCES.get(top_feature, [])
 
 
-def get_resources_for_score(shap_values: dict) -> list[str]:
+def get_resources_for_score(shap_values: list) -> list[str]:
     """Compute curated resource recommendations from stored RiskScore.shap_values.
 
-    RiskScore.shap_values is a dict {feature_name: impact_value}.
-    This function converts it to the list format expected by _get_resources
-    and returns the top-3 resource recommendations.
+    RiskScore.shap_values is a list[dict] with keys {feature, impact_value}.
     """
     if not shap_values:
         return []
-    # Convert {feat: impact} dict to sorted list by absolute impact
+    # Sort by absolute impact descending
     ranked = sorted(
-        shap_values.items(),
-        key=lambda x: abs(x[1]),
+        shap_values,
+        key=lambda x: abs(x.get("impact_value", 0)),
         reverse=True,
     )
-    # Convert to list[dict] format matching _shap_explain output
+    # Ensure impact_values are rounded floats
     shap_list = [
-        {"feature": feat, "impact_value": round(float(val), 4)}
-        for feat, val in ranked
+        {"feature": item.get("feature", ""), "impact_value": round(float(item.get("impact_value", 0)), 4)}
+        for item in ranked
     ]
     return _get_resources(shap_list)
 

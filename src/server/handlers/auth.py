@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from src.model.entities import Employee, Role
 from src.model.entities._db import get_session_factory
-from src.model.services.permission import Action, PermissionDenied, PermissionService
 
 logger = structlog.get_logger(__name__)
 
@@ -49,8 +49,8 @@ def _create_access_token(user_id: str, role: Role, tenant_id: int) -> str:
         "user_id": user_id,
         "roles": [role.value],
         "tenant_id": tenant_id,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
-        "iat": datetime.now(timezone.utc),
+        "exp": datetime.now(UTC) + timedelta(hours=24),
+        "iat": datetime.now(UTC),
         "iss": os.environ.get("NEXUS_JWT_ISSUER", "oraclaire"),
         "aud": os.environ.get("NEXUS_JWT_AUDIENCE", "oraclaire-api"),
     }
@@ -89,7 +89,7 @@ async def login(request: Request) -> JSONResponse:
 
         # Generate a short-lived magic token
         magic_token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=_MAGIC_LINK_TTL_MINUTES)
+        expires_at = datetime.now(UTC) + timedelta(minutes=_MAGIC_LINK_TTL_MINUTES)
 
         # Store token in DB (employee.auth_token field — add via migration if needed)
         # For now: log the token (dev mode)
@@ -212,8 +212,6 @@ async def refresh_token(request: Request) -> JSONResponse:
 
 
 # Router
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/auth/login", login, methods=["POST"])
 router.add_api_route("/auth/verify/{token}", verify_token, methods=["GET"])

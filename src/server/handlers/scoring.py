@@ -8,30 +8,31 @@ GET  /api/scoring/status/{cycle_id}  — check scoring status for a cycle
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from src.audit.alerts import (
+    AlertDecision,
+    get_active_alerts,
+    get_alert_by_id,
+    write_acknowledgment,
+)
+from src.config import MIN_TEAM_SIZE
 from src.model.entities import (
     AssessmentCycle,
     Employee,
     HumanReview,
     ReviewStatus,
-    Role,
     RiskScore,
+    Role,
     Team,
 )
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import Action, PermissionDenied, PermissionService
-from src.config import MIN_TEAM_SIZE
-from src.audit.alerts import (
-    get_active_alerts,
-    get_alert_by_id,
-    write_acknowledgment,
-    AlertDecision,
-)
 
 
 def _role_from_user(user: Any) -> Role:
@@ -120,12 +121,18 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
     RiskScore rows.  Uses its own session to avoid blocking the HTTP
     request lifecycle.
     """
-    from src.config import THRESHOLD_A, THRESHOLD_B, TIER_BOUNDARIES
-    from src.config import MODEL_ARTIFACT_PATH
-    from src.model.services.cycle_health import check_critical_ceiling, check_participation_floor, check_organisational_risk_threshold
-    import joblib
     from pathlib import Path
+
+    import joblib
     import structlog
+
+    from src.config import MODEL_ARTIFACT_PATH
+    from src.model.services.bias_audit import BiasAuditService
+    from src.model.services.cycle_health import (
+        check_critical_ceiling,
+        check_organisational_risk_threshold,
+        check_participation_floor,
+    )
 
     logger = structlog.get_logger(__name__)
 
@@ -179,7 +186,7 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
         for resp in all_responses:
             responses_by_employee[resp.employee_id].append(resp)
 
-        scored_at = datetime.now(timezone.utc)
+        scored_at = datetime.now(UTC)
 
         for emp in employees:
             emp_responses = responses_by_employee.get(emp.id, [])
@@ -190,8 +197,6 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                 numeric_score = 0.5
                 risk_tier = "moderate"
                 shap_values_out = []
-                threshold_used = "A (general)"
-                threshold_value = THRESHOLD_A
                 model_version_str = "1.0.0-fallback"
             else:
                 # Sort responses by item_index
@@ -236,8 +241,6 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                 numeric_score = result["burnout_probability"]
                 risk_tier = result["risk_tier"]
                 shap_values_out = result["shap"]
-                threshold_used = result["threshold_used"]
-                threshold_value = result["threshold_value"]
                 model_version_str = result.get("model_version", "1.0.0")
 
             score = RiskScore(
@@ -314,6 +317,31 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
         except Exception as exc:
             logger.error(
                 "scoring.ort_check.failed",
+                cycle_id=cycle_id,
+                error=str(exc),
+            )
+
+        # M5-08: run bias audit after scoring commits
+        try:
+            audit_report = BiasAuditService.for_cycle(cycle_id, organisation_id)
+            if audit_report.any_flagged:
+                for flag in audit_report.flags:
+                    logger.warning(
+                        "scoring.bias_audit.flag",
+                        cycle_id=cycle_id,
+                        flag=flag,
+                        population_hc_rate=audit_report.population_hc_rate,
+                    )
+            else:
+                logger.info(
+                    "scoring.bias_audit.clean",
+                    cycle_id=cycle_id,
+                    slices=len(audit_report.slices),
+                    population_hc_rate=audit_report.population_hc_rate,
+                )
+        except Exception as exc:
+            logger.error(
+                "scoring.bias_audit.failed",
                 cycle_id=cycle_id,
                 error=str(exc),
             )
@@ -500,8 +528,6 @@ async def scoring_status(request: Request) -> JSONResponse:
 
 
 # Router — FastAPI APIRouter
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/trigger/{cycle_id}", trigger_scoring, methods=["POST"])
 router.add_api_route("/status/{cycle_id}", scoring_status, methods=["GET"])

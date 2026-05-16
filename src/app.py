@@ -27,14 +27,22 @@ from src.config import (
 from src.model.train import run as train_model
 from src.views.api_client import (
     ApiError,
+    get_employee_scores,
+    get_employee_shap,
+    get_employee_trajectory,
     get_exclusions,
     get_participation,
+    get_my_team,
+    get_team_aggregate,
+    get_team_recommendations,
+    get_team_trajectory,
     get_teams,
     get_trends,
     login,
 )
 from src.views.employee import render_employee_view
 from src.views.hr_aggregate import render_hr_view
+from src.views.manager import render_manager_view
 from src.views.reviewer import render_reviewer_view
 
 
@@ -49,52 +57,89 @@ def ensure_model():
 
 
 def page_employee():
-    st.sidebar.markdown("### Employee Assessment")
-    employee_id = st.sidebar.text_input("Employee ID", value="EID_001")
+    token = st.session_state.get("auth_token")
+    employee_id = st.session_state.get("auth_employee_id")
 
-    seniority_tier = st.sidebar.selectbox(
-        "Seniority tier",
-        options=[0, 1],
-        format_func=lambda x: "Senior (1)" if x == 1 else "Junior (0)",
-        index=0,
+    if not token or not employee_id:
+        # Demo mode: feature sliders + local scoring
+        st.sidebar.markdown("### Demo: Employee Assessment")
+        demo_employee_id = st.sidebar.text_input("Employee ID (demo)", value="EID_001")
+
+        seniority_tier = st.sidebar.selectbox(
+            "Seniority tier",
+            options=[0, 1],
+            format_func=lambda x: "Senior (1)" if x == 1 else "Junior (0)",
+            index=0,
+        )
+
+        st.sidebar.markdown("### Assessment features")
+        features = {}
+        feature_defaults = {
+            "company_type": (0, 1),
+            "wfh_setup": (0, 1),
+            "resource_allocation": (0.0, 10.0),
+            "mental_fatigue_score": (0.0, 10.0),
+            "missing_ra": (0, 1),
+            "missing_mfs": (0, 1),
+            "seniority_tier": (0, 1),
+            "tenure_days": (0, 3650),
+        }
+
+        for feat in FEATURES:
+            default_min, default_max = feature_defaults.get(feat, (0.0, 10.0))
+            val = st.sidebar.slider(
+                feat.replace("_", " ").title(),
+                min_value=float(default_min),
+                max_value=float(default_max),
+                value=(float(default_min) + float(default_max)) / 2,
+                step=0.1 if default_min != default_max else 1.0,
+                key=f"feat_{feat}",
+            )
+            features[feat] = val
+
+        features["seniority_tier"] = float(seniority_tier)
+
+        if st.sidebar.button("Run assessment"):
+            render_employee_view(
+                employee_id=demo_employee_id,
+                features=features,
+                seniority_tier=seniority_tier,
+            )
+        else:
+            st.info("Configure features in the sidebar and click **Run assessment**.")
+        return
+
+    # Authenticated: fetch from backend
+    try:
+        scores_data = get_employee_scores(token)
+        shap_data = get_employee_shap(token)
+        trajectory_data = get_employee_trajectory(token)
+    except ApiError as e:
+        st.error(f"Failed to load your assessment data: {e}")
+        return
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
+        return
+
+    scores = scores_data.get("scores", [])
+    if not scores:
+        st.info("No assessment results yet. Complete a cycle when one is open.")
+        return
+
+    latest = scores[0]
+    shap_values = shap_data.get("shap_values", [])
+    resources = latest.get("resources", [])
+
+    render_employee_view(
+        employee_id=employee_id,
+        features=None,
+        seniority_tier=None,
+        risk_tier=latest.get("risk_tier"),
+        burnout_probability=latest.get("numeric_score"),
+        shap=shap_values,
+        resources=resources,
+        trajectory_data=trajectory_data,
     )
-
-    st.sidebar.markdown("### Assessment features")
-    features = {}
-    feature_defaults = {
-        "company_type": (0, 1),
-        "wfh_setup": (0, 1),
-        "resource_allocation": (0.0, 10.0),
-        "mental_fatigue_score": (0.0, 10.0),
-        "missing_ra": (0, 1),
-        "missing_mfs": (0, 1),
-        "seniority_tier": (0, 1),
-        "tenure_days": (0, 3650),
-    }
-
-    for feat in FEATURES:
-        default_min, default_max = feature_defaults.get(feat, (0.0, 10.0))
-        val = st.sidebar.slider(
-            feat.replace("_", " ").title(),
-            min_value=float(default_min),
-            max_value=float(default_max),
-            value=(float(default_min) + float(default_max)) / 2,
-            step=0.1 if default_min != default_max else 1.0,
-            key=f"feat_{feat}",
-        )
-        features[feat] = val
-
-    # Override seniority_tier from sidebar selector
-    features["seniority_tier"] = float(seniority_tier)
-
-    if st.sidebar.button("Run assessment"):
-        render_employee_view(
-            employee_id=employee_id,
-            features=features,
-            seniority_tier=seniority_tier,
-        )
-    else:
-        st.info("Configure features in the sidebar and click **Run assessment**.")
 
 
 def page_hr():
@@ -171,6 +216,55 @@ def page_hr():
     )
 
 
+def page_manager():
+    token = st.session_state.get("auth_token")
+    if not token:
+        st.warning("Sign in with your Employee ID to access the manager dashboard.")
+        return
+
+    # Get the manager's own team
+    try:
+        team_info = get_my_team(token)
+    except ApiError as e:
+        st.error(f"Failed to load team data: {e}")
+        return
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
+        return
+
+    team_id = team_info.get("team_id")
+    team_name = team_info.get("team_name", "Your Team")
+
+    try:
+        aggregate_data = get_team_aggregate(token, team_id)
+        rec_data = get_team_recommendations(token, team_id)
+        trajectory_data = get_team_trajectory(token, team_id)
+    except ApiError as e:
+        st.error(f"Failed to load team data: {e}")
+        return
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
+        return
+
+    render_manager_view(
+        team_id=aggregate_data.get("team_id", team_id),
+        team_name=aggregate_data.get("team_name", team_name),
+        team_size=aggregate_data.get("team_size", 0),
+        suppressed=aggregate_data.get("suppressed", False),
+        suppression_reason=aggregate_data.get("suppression_reason"),
+        visibility_locked=aggregate_data.get("visibility_locked", False),
+        cycles=aggregate_data.get("cycles", []),
+        tier_distribution=aggregate_data.get("tier_distribution", {}),
+        high_critical_pct=aggregate_data.get("high_critical_pct"),
+        consecutive_weeks_elevated=aggregate_data.get("consecutive_weeks_elevated", 0),
+        top_factors=rec_data.get("top_factors", []),
+        recommendations=rec_data.get("recommendations", []),
+        worst_tier=rec_data.get("worst_tier", "low"),
+        ort_ceiling=aggregate_data.get("ort_ceiling", 0.20),
+        team_trajectory_data=trajectory_data,
+    )
+
+
 def page_reviewer(token: str):
     render_reviewer_view(token=token)
 
@@ -218,13 +312,15 @@ def main():
 
     page = st.sidebar.selectbox(
         "View",
-        options=["Employee", "HR Aggregate", "Reviewer"],
+        options=["Employee", "HR Aggregate", "Manager", "Reviewer"],
     )
 
     if page == "Employee":
         page_employee()
     elif page == "HR Aggregate":
         page_hr()
+    elif page == "Manager":
+        page_manager()
     elif page == "Reviewer":
         if not st.session_state.auth_token:
             st.warning("Sign in with your Employee ID to access the reviewer queue.")

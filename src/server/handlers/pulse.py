@@ -7,11 +7,19 @@ GET    /api/employee/{id}/pulse-trend   — last N weekly pulse scores for trend
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
+from fastapi import APIRouter
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.model.entities import AssessmentCycle, AssessmentResponse, Employee, CycleType, CycleStatus, Role
+from src.model.entities import (
+    AssessmentCycle,
+    AssessmentResponse,
+    CycleStatus,
+    CycleType,
+    Role,
+)
 from src.model.entities._db import get_session_factory
 from src.model.services.permission import Action, PermissionDenied, PermissionService
 
@@ -30,7 +38,7 @@ def _require_role(user) -> Role:
 
 def _get_current_week_pulse_cycle(org_id: int, session) -> AssessmentCycle | None:
     """Find an open pulse cycle for the current week, or None."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=now.weekday(), hours=now.hour, minutes=now.minute)
 
     return session.query(AssessmentCycle).filter(
@@ -47,7 +55,7 @@ def _get_or_create_pulse_cycle(org_id: int, session) -> AssessmentCycle:
     if cycle:
         return cycle
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cycle = AssessmentCycle(
         organisation_id=org_id,
         cycle_type=CycleType.PULSE,
@@ -117,14 +125,13 @@ async def submit_pulse_response(request: Request) -> JSONResponse:
         session.execute(stmt)
 
         # Also mark as submitted immediately (pulse is single-item, no partial state)
-        from datetime import timezone
         existing = session.query(AssessmentResponse).filter(
             AssessmentResponse.cycle_id == cycle.id,
             AssessmentResponse.employee_id == employee_id,
             AssessmentResponse.item_index == 0,
         ).first()
         if existing and existing.submitted_at is None:
-            existing.submitted_at = datetime.now(timezone.utc)
+            existing.submitted_at = datetime.now(UTC)
 
         session.commit()
 
@@ -157,7 +164,6 @@ async def get_pulse_trend(request: Request) -> JSONResponse:
     except (ValueError, IndexError):
         return JSONResponse({"error": "invalid employee id"}, status_code=400)
 
-    org_id = getattr(user, "tenant_id", None)
     role = _require_role(user)
 
     # Access control: employee can only read their own pulse trend
@@ -206,7 +212,5 @@ async def get_pulse_trend(request: Request) -> JSONResponse:
 
 
 # Router
-from fastapi import APIRouter
-
 router = APIRouter()
 router.add_api_route("/response", submit_pulse_response, methods=["POST"])
