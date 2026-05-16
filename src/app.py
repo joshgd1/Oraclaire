@@ -668,49 +668,13 @@ def main():
         "system_admin": "System Admin",
     }
 
-    with st.sidebar:
-        st.markdown("### Oraclaire")
-        st.caption("Burnout Risk Assessment")
-        st.markdown("---")
+    # Sidebar only shown to logged-in users
+    if st.session_state.auth_token:
+        with st.sidebar:
+            st.markdown("### Oraclaire")
+            st.caption("Burnout Risk Assessment")
+            st.markdown("---")
 
-        if not st.session_state.auth_token:
-            st.markdown("**Sign in**")
-            login_role = st.selectbox(
-                "Your role",
-                options=list(role_display_map.values()),
-                index=0,
-                label_visibility="collapsed",
-            )
-            login_emp_id = st.text_input(
-                "Employee ID",
-                value="",
-                placeholder="e.g. 1",
-                label_visibility="collapsed",
-            )
-            if st.button("Sign in", use_container_width=True, type="primary"):
-                if not login_emp_id.strip():
-                    st.warning("Enter your Employee ID.")
-                else:
-                    try:
-                        auth_data = login(login_emp_id.strip())
-                        st.session_state.auth_token = auth_data["token"]
-                        st.session_state.auth_employee_id = login_emp_id.strip()
-                        st.session_state.auth_role = auth_data.get("role", "")
-                        # Determine initial page from actual returned role
-                        actual_role = auth_data.get("role", "employee")
-                        default_page = {
-                            "employee": "Employee",
-                            "manager": "Manager",
-                            "hr_admin": "HR Aggregate",
-                            "system_admin": "HR Aggregate",
-                        }.get(actual_role, "Employee")
-                        st.session_state.page_nav = default_page
-                        st.rerun()
-                    except ApiError as e:
-                        st.error(str(e))
-                    except Exception as e:
-                        st.error(f"Login error: {e}")
-        else:
             role_label = role_display_map.get(st.session_state.auth_role, st.session_state.auth_role)
             st.success(f"**{st.session_state.auth_employee_id}**")
             st.caption(f"Role: {role_label}")
@@ -723,38 +687,41 @@ def main():
                 st.session_state.ux_started = False
                 st.rerun()
 
-        st.markdown("---")
-        st.markdown("#### Navigate")
-        page_options = ["Employee", "HR Aggregate", "Manager", "Reviewer"]
-        current_index = page_options.index(st.session_state.page_nav) if st.session_state.page_nav in page_options else 0
-        page = st.selectbox(
-            "View",
-            options=page_options,
-            index=current_index,
-            label_visibility="collapsed",
-        )
-        st.session_state.page_nav = page
+            st.markdown("---")
+            st.markdown("#### Navigate")
+            page_options = ["Employee", "HR Aggregate", "Manager", "Reviewer"]
+            current_index = page_options.index(st.session_state.page_nav) if st.session_state.page_nav in page_options else 0
+            page = st.selectbox(
+                "View",
+                options=page_options,
+                index=current_index,
+                label_visibility="collapsed",
+            )
+            st.session_state.page_nav = page
 
-    # Show landing page when not logged in and demo not started
-    if not st.session_state.auth_token and not st.session_state.get("ux_started"):
-        page_landing()
-        return
-
-    if page == "Employee":
-        page_employee()
-    elif page == "HR Aggregate":
-        page_hr()
-    elif page == "Manager":
-        page_manager()
-    elif page == "Reviewer":
-        if not st.session_state.auth_token:
-            st.warning("Sign in to access the Reviewer queue.")
-            return
-        role = st.session_state.get("auth_role", "")
-        if role not in ("system_admin", "hr_admin"):
-            st.error("Access denied. The Review Queue is only available to Administrators.")
-            return
-        page_reviewer(st.session_state.auth_token)
+        if page == "Employee":
+            page_employee()
+        elif page == "HR Aggregate":
+            page_hr()
+        elif page == "Manager":
+            page_manager()
+        elif page == "Reviewer":
+            if not st.session_state.auth_token:
+                st.warning("Sign in to access the Reviewer queue.")
+                return
+            role = st.session_state.get("auth_role", "")
+            if role not in ("system_admin", "hr_admin"):
+                st.error("Access denied. The Review Queue is only available to Administrators.")
+                return
+            page_reviewer(st.session_state.auth_token)
+    else:
+        # Not logged in — show landing page (no sidebar)
+        if not st.session_state.get("ux_started"):
+            page_landing()
+        else:
+            # Demo in progress — show demo assessment with no sidebar
+            st.session_state.page_nav = "Employee"
+            page_employee()
 
 
 if __name__ == "__main__":
