@@ -285,24 +285,73 @@ def page_landing():
 
     Uses fixed positioning so the split-screen is fully isolated from
     Streamlit's global CSS — no global theme overrides that persist after login.
+
+    The entire login UI (both panels + form fields) is rendered via a single
+    st.html() call so all elements land in the DOM together, immune to
+    Streamlit's structural DOM rendering quirks.
     """
+    import urllib.parse
 
-    role_display_map = {
-        "employee": "Employee",
-        "manager": "Manager",
-        "hr_admin": "HR Admin",
-        "system_admin": "System Admin",
-    }
+    # Read current query params to detect form submission
+    qp = st.query_params
+    submitted_emp_id = qp.get("login_emp_id", "")
+    demo_mode = qp.get("demo", "")
 
-    # ── Fonts + scoped landing styles via st.html (not st.markdown) ──────
-    # st.html() properly renders raw HTML; st.markdown() can escape tags
-    # in some Streamlit versions, showing raw HTML as text.
+    # ── Clear params after reading (prevent URL accumulation) ────────────
+    if submitted_emp_id or demo_mode:
+        qp.clear()
+        if demo_mode:
+            st.session_state.ux_started = True
+            st.session_state.page_nav = "Employee"
+            st.rerun()
+        elif submitted_emp_id:
+            emp_id = submitted_emp_id.strip()
+            if not emp_id:
+                st.warning("Enter your Employee ID.")
+            else:
+                failed = st.session_state.get("login_failed_attempts", 0)
+                if failed >= 5:
+                    st.error("Too many failed attempts. Please wait a moment before trying again.")
+                else:
+                    try:
+                        auth_data = login(emp_id)
+                        st.session_state.login_failed_attempts = 0
+                        st.session_state.auth_token = auth_data["token"]
+                        st.session_state.auth_employee_id = emp_id
+                        st.session_state.auth_role = auth_data.get("role", "")
+                        actual_role = auth_data.get("role", "employee")
+                        default_page = {
+                            "employee": "Employee",
+                            "manager": "Manager",
+                            "hr_admin": "HR Aggregate",
+                            "system_admin": "HR Aggregate",
+                        }.get(actual_role, "Employee")
+                        st.session_state.page_nav = default_page
+                        st.rerun()
+                    except AuthExpiredError:
+                        st.session_state.auth_token = None
+                        st.session_state.auth_employee_id = None
+                        st.session_state.auth_role = None
+                        st.session_state.page_nav = "Employee"
+                        st.session_state.ux_started = False
+                        st.error("Session expired. Please sign in again.")
+                    except ApiError as e:
+                        st.session_state.login_failed_attempts = failed + 1
+                        remaining = max(0, 5 - st.session_state.login_failed_attempts)
+                        msg = str(e)
+                        if remaining == 0:
+                            msg += " (locked out — too many attempts)"
+                        st.error(msg)
+                    except Exception as e:
+                        st.error(f"Login error: {e}")
+            return
+
+    # ── Full login page via single st.html() call ────────────────────────
     st.html(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap');
 
-        /* Landing page root — fixed split, no global bleed */
         section[data-testid="stMain"] {
             position: fixed !important;
             top: 0 !important;
@@ -312,10 +361,8 @@ def page_landing():
             overflow: hidden !important;
             background: #ffffff !important;
         }
-        /* Hide sidebar on landing page */
         [data-testid="stSidebar"] { display: none !important; }
 
-        /* Left panel: teal gradient, 40% width, full height */
         div.login-left {
             position: fixed !important;
             top: 0 !important; left: 0 !important;
@@ -327,7 +374,6 @@ def page_landing():
             box-sizing: border-box !important;
             overflow: hidden !important; z-index: 1 !important;
         }
-        /* Right panel: white, 60% width, full height */
         div.login-right {
             position: fixed !important;
             top: 0 !important; right: 0 !important;
@@ -339,11 +385,9 @@ def page_landing():
             box-sizing: border-box !important;
             overflow-y: auto !important; z-index: 1 !important;
         }
-        /* Card within right panel */
         div.login-card {
             width: 100% !important; max-width: 420px !important;
         }
-        /* Left panel decorative blobs */
         div.login-blob1 {
             position: absolute !important; top: -120px !important; right: -100px !important;
             width: 420px !important; height: 420px !important;
@@ -370,56 +414,63 @@ def page_landing():
             border-radius: 50% !important;
             background: rgba(255,255,255,0.18) !important; pointer-events: none !important;
         }
-        /* Form inputs scoped to login-right */
-        div.login-right .stTextInput > div > div > input {
+        .login-label {
+            font-family: 'Inter', sans-serif !important;
+            font-size: 0.8rem !important; font-weight: 600 !important;
+            color: #374151 !important; margin-bottom: 6px !important;
+            display: block !important;
+        }
+        .login-select, .login-input {
+            width: 100% !important;
             border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
             background: #f9fafb !important; color: #111827 !important;
+            font-family: 'Inter', sans-serif !important;
             font-size: 0.9rem !important; padding: 10px 14px !important;
-            width: 100% !important; transition: border-color 0.15s !important;
+            box-sizing: border-box !important;
+            transition: border-color 0.15s !important;
+            outline: none !important;
         }
-        div.login-right .stTextInput > div > div > input:focus {
-            border-color: #0d7377 !important; background: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important; outline: none !important;
+        .login-select:focus, .login-input:focus {
+            border-color: #0d7377 !important;
+            background: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
         }
-        div.login-right .stTextInput > div > div > input::placeholder { color: #9ca3af !important; }
-        div.login-right .stSelectbox > div > div {
-            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
-            background: #f9fafb !important; width: 100% !important;
-        }
-        div.login-right .stSelectbox label,
-        div.login-right .stTextInput label {
-            font-family: 'Inter', sans-serif !important; font-size: 0.8rem !important;
-            font-weight: 600 !important; color: #374151 !important; margin-bottom: 6px !important;
-        }
-        /* Primary submit button */
-        div.login-right div[data-testid="stFormSubmitButton"] > button {
-            width: 100% !important; background: #0d7377 !important; color: #ffffff !important;
-            border: none !important; border-radius: 10px !important;
-            font-family: 'Inter', sans-serif !important; font-size: 0.9rem !important;
-            font-weight: 600 !important; padding: 11px 20px !important;
+        .login-input::placeholder { color: #9ca3af !important; }
+        .btn-primary {
+            width: 100% !important; background: #0d7377 !important;
+            color: #ffffff !important; border: none !important;
+            border-radius: 10px !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 0.9rem !important; font-weight: 600 !important;
+            padding: 11px 20px !important;
+            cursor: pointer !important;
             transition: background 0.15s, transform 0.1s !important;
+            margin-top: 4px !important;
         }
-        div.login-right div[data-testid="stFormSubmitButton"] > button:hover {
-            background: #0a5f66 !important; transform: translateY(-1px) !important;
+        .btn-primary:hover { background: #0a5f66 !important; transform: translateY(-1px) !important; }
+        .btn-demo {
+            width: 100% !important; background: #f3f4f6 !important;
+            color: #374151 !important; border: 1.5px solid #d1d5db !important;
+            border-radius: 10px !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 0.9rem !important; font-weight: 600 !important;
+            padding: 10px 20px !important;
+            cursor: pointer !important;
+            transition: background 0.15s !important;
+            margin-top: 4px !important;
         }
-        /* Ensure Streamlit main block doesn't interfere */
+        .btn-demo:hover { background: #e5e7eb !important; }
         .stMainBlockContainer {
             width: 100% !important; max-width: 100% !important; padding: 0 !important;
         }
         </style>
-        """
-    )
 
-    # ── Left panel HTML via st.html ─────────────────────────────────────
-    st.html(
-        """
         <div class="login-left">
             <div class="login-blob1"></div>
             <div class="login-blob2"></div>
             <div class="login-dot1"></div>
             <div class="login-dot2"></div>
 
-            <!-- Logo mark -->
             <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:48px;position:relative;z-index:1">
                 <div style="width:44px;height:44px;background:rgba(255,255,255,0.15);border-radius:12px;
                             display:flex;align-items:center;justify-content:center;
@@ -430,12 +481,10 @@ def page_landing():
                             color:#ffffff;letter-spacing:-0.01em">Oraclaire</span>
             </div>
 
-            <!-- Headline -->
             <h1 style="font-family:'DM Serif Display',Georgia,serif;font-size:2.8rem;font-weight:400;
                       color:#ffffff;line-height:1.18;margin:0 0 20px 0;letter-spacing:-0.02em;
                       position:relative;z-index:1">Your wellbeing,<br>protected.</h1>
 
-            <!-- Tagline -->
             <p style="font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:400;
                       color:rgba(255,255,255,0.72);line-height:1.65;margin:0 0 52px 0;
                       max-width:300px;position:relative;z-index:1">
@@ -443,7 +492,6 @@ def page_landing():
                 Used by HR teams at forward-thinking companies.
             </p>
 
-            <!-- Feature pills -->
             <div style="position:relative;z-index:1">
                 <div style="display:inline-flex;align-items:center;gap:8px;
                             background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
@@ -468,21 +516,15 @@ def page_landing():
                 </div>
             </div>
 
-            <!-- Copyright -->
             <div style="position:absolute;bottom:32px;left:52px;font-family:'Inter',sans-serif;
                         font-size:0.72rem;color:rgba(255,255,255,0.38);z-index:1">
                 © 2026 Oraclaire. All rights reserved.
             </div>
         </div>
-        """
-    )
 
-    # ── Right panel header HTML via st.html ─────────────────────────────
-    st.html(
-        """
         <div class="login-right">
             <div class="login-card">
-                <div style="margin-bottom:36px">
+                <div style="margin-bottom:32px">
                     <h2 style="font-family:'Inter',sans-serif;font-size:1.55rem;font-weight:700;
                               color:#111827;margin:0 0 8px 0;letter-spacing:-0.025em">
                         Sign in to Oraclaire
@@ -492,88 +534,41 @@ def page_landing():
                         Access your personalised burnout risk dashboard
                     </p>
                 </div>
+
+                <form id="loginForm" method="GET" style="display:flex;flex-direction:column;gap:16px">
+                    <div>
+                        <label class="login-label" for="roleSelect">Your role</label>
+                        <select class="login-select" id="roleSelect" name="role">
+                            <option value="employee">Employee</option>
+                            <option value="manager">Manager</option>
+                            <option value="hr_admin">HR Admin</option>
+                            <option value="system_admin">System Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="login-label" for="empIdInput">Employee ID</label>
+                        <input class="login-input" type="text" id="empIdInput" name="emp_id"
+                               placeholder="e.g. 1" autocomplete="off" />
+                    </div>
+                    <div style="display:flex;gap:10px;margin-top:4px">
+                        <button class="btn-demo" type="button" id="demoBtn">Try demo</button>
+                        <button class="btn-primary" type="submit">Sign in</button>
+                    </div>
+                </form>
+
+                <script>
+                document.getElementById('demoBtn').addEventListener('click', function() {
+                    var form = document.getElementById('loginForm');
+                    var input = document.createElement('input');
+                    input.type = 'hidden'; input.name = 'demo'; input.value = '1';
+                    form.appendChild(input);
+                    form.submit();
+                });
+                </script>
             </div>
         </div>
         """
     )
-
-    # ── Streamlit form fields (rendered by Streamlit into the right panel) ──
-    with st.container():
-        with st.form("login_form", clear_on_submit=False):
-            st.selectbox(
-                "Your role",
-                options=list(role_display_map.values()),
-                index=0,
-                key="landing_role",
-            )
-            st.text_input(
-                "Employee ID",
-                value="",
-                placeholder="e.g. 1",
-                key="landing_emp_id",
-            )
-            col_demo, col_signin = st.columns([1, 1])
-            with col_signin:
-                submitted = st.form_submit_button(
-                    "Sign in",
-                    use_container_width=True,
-                    type="primary",
-                )
-            with col_demo:
-                demo_clicked = st.form_submit_button(
-                    "Try demo",
-                    use_container_width=True,
-                )
-
-    # ── Handle form submission ────────────────────────────────────────────
-    if demo_clicked:
-        st.session_state.ux_started = True
-        st.session_state.page_nav = "Employee"
-        st.rerun()
-
-    if submitted:
-        emp_id = st.session_state.get("landing_emp_id", "").strip()
-        if not emp_id:
-            st.warning("Enter your Employee ID.")
-        else:
-            # Rate limiting: lock out after 5 consecutive failed attempts
-            failed = st.session_state.get("login_failed_attempts", 0)
-            if failed >= 5:
-                st.error("Too many failed attempts. Please wait a moment before trying again.")
-                return
-            try:
-                auth_data = login(emp_id)
-                # Success — reset rate-limit counter
-                st.session_state.login_failed_attempts = 0
-                st.session_state.auth_token = auth_data["token"]
-                st.session_state.auth_employee_id = emp_id
-                st.session_state.auth_role = auth_data.get("role", "")
-                actual_role = auth_data.get("role", "employee")
-                default_page = {
-                    "employee": "Employee",
-                    "manager": "Manager",
-                    "hr_admin": "HR Aggregate",
-                    "system_admin": "HR Aggregate",
-                }.get(actual_role, "Employee")
-                st.session_state.page_nav = default_page
-                st.rerun()
-            except AuthExpiredError:
-                st.session_state.auth_token = None
-                st.session_state.auth_employee_id = None
-                st.session_state.auth_role = None
-                st.session_state.page_nav = "Employee"
-                st.session_state.ux_started = False
-                st.error("Session expired. Please sign in again.")
-            except ApiError as e:
-                # Increment failed-attempt counter for brute-force protection
-                st.session_state.login_failed_attempts = failed + 1
-                remaining = max(0, 5 - st.session_state.login_failed_attempts)
-                msg = str(e)
-                if remaining == 0:
-                    msg += " (locked out — too many attempts)"
-                st.error(msg)
-            except Exception as e:
-                st.error(f"Login error: {e}")
 
 
 def page_employee():
