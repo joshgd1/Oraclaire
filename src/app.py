@@ -277,76 +277,16 @@ def ensure_model():
         st.success("Model trained and saved.")
 
 
+# ── Login page ────────────────────────────────────────────────────────────────
+
 def page_landing():
-    """Split-screen login — Traveler-inspired.
+    """Split-screen login page rendered as pure HTML.
 
-    Left panel: teal gradient with branding, headline, feature pills.
-    Right panel: white form card with role selector, employee ID, demo CTA.
-
-    Uses fixed positioning so the split-screen is fully isolated from
-    Streamlit's global CSS — no global theme overrides that persist after login.
-
-    The entire login UI (both panels + form fields) is rendered via a single
-    st.html() call so all elements land in the DOM together, immune to
-    Streamlit's structural DOM rendering quirks.
+    Left panel: teal gradient with branding and feature pills.
+    Right panel: white card with Employee ID field and Sign in button.
+    Both panels and the form are in a single st.html() call so they render
+    together in the DOM.
     """
-    import urllib.parse
-
-    # Read current query params to detect form submission
-    qp = st.query_params
-    submitted_emp_id = qp.get("login_emp_id", "")
-    demo_mode = qp.get("demo", "")
-
-    # ── Clear params after reading (prevent URL accumulation) ────────────
-    if submitted_emp_id or demo_mode:
-        qp.clear()
-        if demo_mode:
-            st.session_state.ux_started = True
-            st.session_state.page_nav = "Employee"
-            st.rerun()
-        elif submitted_emp_id:
-            emp_id = submitted_emp_id.strip()
-            if not emp_id:
-                st.warning("Enter your Employee ID.")
-            else:
-                failed = st.session_state.get("login_failed_attempts", 0)
-                if failed >= 5:
-                    st.error("Too many failed attempts. Please wait a moment before trying again.")
-                else:
-                    try:
-                        auth_data = login(emp_id)
-                        st.session_state.login_failed_attempts = 0
-                        st.session_state.auth_token = auth_data["token"]
-                        st.session_state.auth_employee_id = emp_id
-                        st.session_state.auth_role = auth_data.get("role", "")
-                        actual_role = auth_data.get("role", "employee")
-                        default_page = {
-                            "employee": "Employee",
-                            "manager": "Manager",
-                            "hr_admin": "HR Aggregate",
-                            "system_admin": "HR Aggregate",
-                        }.get(actual_role, "Employee")
-                        st.session_state.page_nav = default_page
-                        st.rerun()
-                    except AuthExpiredError:
-                        st.session_state.auth_token = None
-                        st.session_state.auth_employee_id = None
-                        st.session_state.auth_role = None
-                        st.session_state.page_nav = "Employee"
-                        st.session_state.ux_started = False
-                        st.error("Session expired. Please sign in again.")
-                    except ApiError as e:
-                        st.session_state.login_failed_attempts = failed + 1
-                        remaining = max(0, 5 - st.session_state.login_failed_attempts)
-                        msg = str(e)
-                        if remaining == 0:
-                            msg += " (locked out — too many attempts)"
-                        st.error(msg)
-                    except Exception as e:
-                        st.error(f"Login error: {e}")
-            return
-
-    # ── Full login page via single st.html() call ────────────────────────
     st.html(
         """
         <style>
@@ -354,10 +294,8 @@ def page_landing():
 
         section[data-testid="stMain"] {
             position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
+            top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important;
             overflow: hidden !important;
             background: #ffffff !important;
         }
@@ -420,7 +358,7 @@ def page_landing():
             color: #374151 !important; margin-bottom: 6px !important;
             display: block !important;
         }
-        .login-select, .login-input {
+        .login-input {
             width: 100% !important;
             border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
             background: #f9fafb !important; color: #111827 !important;
@@ -430,7 +368,7 @@ def page_landing():
             transition: border-color 0.15s !important;
             outline: none !important;
         }
-        .login-select:focus, .login-input:focus {
+        .login-input:focus {
             border-color: #0d7377 !important;
             background: #ffffff !important;
             box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
@@ -448,18 +386,6 @@ def page_landing():
             margin-top: 4px !important;
         }
         .btn-primary:hover { background: #0a5f66 !important; transform: translateY(-1px) !important; }
-        .btn-demo {
-            width: 100% !important; background: #f3f4f6 !important;
-            color: #374151 !important; border: 1.5px solid #d1d5db !important;
-            border-radius: 10px !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important; font-weight: 600 !important;
-            padding: 10px 20px !important;
-            cursor: pointer !important;
-            transition: background 0.15s !important;
-            margin-top: 4px !important;
-        }
-        .btn-demo:hover { background: #e5e7eb !important; }
         .stMainBlockContainer {
             width: 100% !important; max-width: 100% !important; padding: 0 !important;
         }
@@ -537,34 +463,12 @@ def page_landing():
 
                 <form id="loginForm" method="GET" style="display:flex;flex-direction:column;gap:16px">
                     <div>
-                        <label class="login-label" for="roleSelect">Your role</label>
-                        <select class="login-select" id="roleSelect" name="role">
-                            <option value="employee">Employee</option>
-                            <option value="manager">Manager</option>
-                            <option value="hr_admin">HR Admin</option>
-                            <option value="system_admin">System Admin</option>
-                        </select>
-                    </div>
-                    <div>
                         <label class="login-label" for="empIdInput">Employee ID</label>
                         <input class="login-input" type="text" id="empIdInput" name="emp_id"
                                placeholder="e.g. 1" autocomplete="off" />
                     </div>
-                    <div style="display:flex;gap:10px;margin-top:4px">
-                        <button class="btn-demo" type="button" id="demoBtn">Try demo</button>
-                        <button class="btn-primary" type="submit">Sign in</button>
-                    </div>
+                    <button class="btn-primary" type="submit">Sign in</button>
                 </form>
-
-                <script>
-                document.getElementById('demoBtn').addEventListener('click', function() {
-                    var form = document.getElementById('loginForm');
-                    var input = document.createElement('input');
-                    input.type = 'hidden'; input.name = 'demo'; input.value = '1';
-                    form.appendChild(input);
-                    form.submit();
-                });
-                </script>
             </div>
         </div>
         """
@@ -618,8 +522,6 @@ def page_employee():
             key="demo_wfh",
         )
         wfh_setup = 1 if wfh == "Yes" else 0
-        # 6-band MNC structure: Associate → VP/SVP
-        # Maps to seniority_tier 0-5 for model scoring
         seniority_tier = st.selectbox(
             "Role level",
             options=[0, 1, 2, 3, 4, 5],
@@ -650,7 +552,6 @@ def page_employee():
 
         st.markdown("---")
         if st.button("Run assessment", key="run_demo", use_container_width=True):
-            # Bypass check-in screen go straight to result
             st.session_state.ux_demo_features = features
             st.session_state.ux_demo_seniority = seniority_tier
             st.session_state.ux_demo_employee_id = demo_employee_id
@@ -856,6 +757,7 @@ def main():
     _inject_theme()
     ensure_model()
 
+    # ── Session state init ─────────────────────────────────────────────────
     if "auth_token" not in st.session_state:
         st.session_state.auth_token = None
     if "auth_employee_id" not in st.session_state:
@@ -869,22 +771,68 @@ def main():
     if "login_failed_attempts" not in st.session_state:
         st.session_state.login_failed_attempts = 0
 
-    # Role display/selection
-    role_display_map = {
-        "employee": "Employee",
-        "manager": "Manager",
-        "hr_admin": "HR Admin",
-        "system_admin": "System Admin",
-    }
+    # ── Handle login form submission via query params ─────────────────────────
+    # This runs on EVERY page re-render (including after form submission),
+    # so we check params before any page rendering to intercept the redirect.
+    qp = st.query_params
+    emp_id_param = qp.get("emp_id", "")
 
-    # Sidebar only shown to logged-in users
+    if emp_id_param:
+        qp.clear()
+        emp_id = emp_id_param.strip()
+        if emp_id:
+            failed = st.session_state.get("login_failed_attempts", 0)
+            if failed >= 5:
+                st.error("Too many failed attempts. Please wait a moment before trying again.")
+            else:
+                try:
+                    auth_data = login(emp_id)
+                    st.session_state.login_failed_attempts = 0
+                    st.session_state.auth_token = auth_data["token"]
+                    st.session_state.auth_employee_id = emp_id
+                    st.session_state.auth_role = auth_data.get("role", "")
+                    actual_role = auth_data.get("role", "employee")
+                    default_page = {
+                        "employee": "Employee",
+                        "manager": "Manager",
+                        "hr_admin": "HR Aggregate",
+                        "system_admin": "HR Aggregate",
+                    }.get(actual_role, "Employee")
+                    st.session_state.page_nav = default_page
+                except AuthExpiredError:
+                    st.session_state.auth_token = None
+                    st.session_state.auth_employee_id = None
+                    st.session_state.auth_role = None
+                    st.session_state.page_nav = "Employee"
+                    st.session_state.ux_started = False
+                    st.error("Session expired. Please sign in again.")
+                except ApiError as e:
+                    st.session_state.login_failed_attempts = failed + 1
+                    remaining = max(0, 5 - st.session_state.login_failed_attempts)
+                    msg = str(e)
+                    if remaining == 0:
+                        msg += " (locked out — too many attempts)"
+                    st.error(msg)
+                except Exception as e:
+                    st.error(f"Login error: {e}")
+
+    # ── Authenticated sidebar view ──────────────────────────────────────────
     if st.session_state.auth_token:
+        role_display_map = {
+            "employee": "Employee",
+            "manager": "Manager",
+            "hr_admin": "HR Admin",
+            "system_admin": "System Admin",
+        }
+
         with st.sidebar:
             st.markdown("### Oraclaire")
             st.caption("Burnout Risk Assessment")
             st.markdown("---")
 
-            role_label = role_display_map.get(st.session_state.auth_role, st.session_state.auth_role)
+            role_label = role_display_map.get(
+                st.session_state.auth_role, st.session_state.auth_role
+            )
             st.success(f"**{st.session_state.auth_employee_id}**")
             st.caption(f"Role: {role_label}")
             st.markdown("---")
@@ -897,11 +845,15 @@ def main():
             st.markdown("---")
             st.markdown("#### Navigate")
             page_options = ["Employee", "HR Aggregate", "Manager", "Reviewer"]
-            current_index = page_options.index(st.session_state.page_nav) if st.session_state.page_nav in page_options else 0
+            current_idx = (
+                page_options.index(st.session_state.page_nav)
+                if st.session_state.page_nav in page_options
+                else 0
+            )
             page = st.selectbox(
                 "View",
                 options=page_options,
-                index=current_index,
+                index=current_idx,
                 label_visibility="collapsed",
             )
             st.session_state.page_nav = page
@@ -918,15 +870,17 @@ def main():
                 return
             role = st.session_state.get("auth_role", "")
             if role not in ("system_admin", "hr_admin"):
-                st.error("Access denied. The Review Queue is only available to Administrators.")
+                st.error(
+                    "Access denied. The Review Queue is only available to Administrators."
+                )
                 return
             page_reviewer(st.session_state.auth_token)
+
     else:
         # Not logged in — show landing page (no sidebar)
         if not st.session_state.get("ux_started"):
             page_landing()
         else:
-            # Demo in progress — show demo assessment with no sidebar
             st.session_state.page_nav = "Employee"
             page_employee()
 
