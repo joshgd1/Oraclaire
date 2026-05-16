@@ -74,3 +74,6 @@ secrets/
 oraclaire.db
 data/plans/
 data/processed/unlabelled_pool.csv
+
+# Audit logs — NEVER commit (contains PII + burnout data)
+data/audit/

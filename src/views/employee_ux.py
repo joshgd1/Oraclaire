@@ -95,25 +95,6 @@ def _render_tier_badge(tier: str):
     )
 
 
-def _big_button(label: str, key: str, primary: bool = True):
-    bg = "#0d7377" if primary else THEME["card_bg"]
-    color = "#ffffff" if primary else THEME["text"]
-    border = "none" if primary else f"1px solid {THEME['border']}"
-    st.markdown(
-        f'<style>'
-        f'a[data-testid="stMainBlockContainer"] button[data-testid="stMainBlockContainer"] '
-        f'#{key} {{display:none}} '
-        f'</style>',
-        unsafe_allow_html=True,
-    )
-    clicked = st.button(
-        label,
-        key=key,
-        use_container_width=True,
-    )
-    return clicked
-
-
 def _section_title(text: str):
     st.markdown(
         f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'

@@ -24,10 +24,11 @@ from nexus.auth.rate_limit import RateLimitConfig
 
 _jwt_secret = os.environ.get("NEXUS_JWT_SECRET", "")
 if not _jwt_secret:
-    import secrets
-
-    _jwt_secret = secrets.token_hex(32)
-    print("WARNING: NEXUS_JWT_SECRET not set; generated ephemeral secret")
+    raise RuntimeError(
+        "NEXUS_JWT_SECRET environment variable is not set. "
+        "Set it to a stable secret string before starting the server. "
+        "Ephemeral secrets invalidate all existing tokens on server restart."
+    )
 
 JWT_CONFIG = JWTConfig(
     secret=_jwt_secret,

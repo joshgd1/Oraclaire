@@ -22,8 +22,17 @@ class ApiError(Exception):
         self.status_code = status_code
 
 
+class AuthExpiredError(ApiError):
+    """Raised when the API returns 401 — the token is invalid or expired."""
+
+    def __init__(self, message: str = "Session expired. Please sign in again."):
+        super().__init__(message, status_code=401)
+
+
 def _unwrap(resp: requests.Response) -> dict[str, Any]:
     """Unwrap Nexus response envelope if present."""
+    if resp.status_code == 401:
+        raise AuthExpiredError()
     envelope = resp.json()
     raw = envelope.get("data", {}).get("content", envelope)
     if isinstance(raw, str):
@@ -428,6 +437,9 @@ def view_my_data(token: str, employee_id: int) -> dict[str, Any]:
     """
     GET /api/employee/{id}/data — all data held about this employee.
     Returns {"data": {...}}.
+
+    SECURITY: The API server MUST verify token.subject == employee_id before
+    returning data. Calling this with another employee's ID MUST return 403.
     Raises ApiError on failure.
     """
     try:
@@ -449,6 +461,8 @@ def export_my_data(token: str, employee_id: int) -> dict[str, Any]:
     """
     GET /api/employee/{id}/export — JSON export of all individual data.
     Returns {"export": {...}}.
+
+    SECURITY: The API server MUST verify token.subject == employee_id (same as above).
     Raises ApiError on failure.
     """
     try:
@@ -470,6 +484,8 @@ def delete_my_data(token: str, employee_id: int) -> dict[str, Any]:
     """
     DELETE /api/employee/{id}/data — delete all individual data.
     Returns {"deleted": True, "employee_id": N}.
+
+    SECURITY: The API server MUST verify token.subject == employee_id (same as above).
     Raises ApiError on failure.
     """
     try:
@@ -485,3 +501,27 @@ def delete_my_data(token: str, employee_id: int) -> dict[str, Any]:
         raise ApiError(f"Failed to delete your data: {resp.text}", status_code=resp.status_code)
 
     return _unwrap(resp)
+
+
+# ── Logout ───────────────────────────────────────────────────────────────────
+
+
+def logout(token: str) -> None:
+    """
+    POST /api/auth/logout — invalidate the current token server-side.
+
+    The server MUST maintain a token blocklist (e.g. Redis set of revoked JTI
+    claims) and check it on every authenticated request. Without a blocklist,
+    the token remains valid until its natural expiry — clearing it client-side
+    only (st.session_state) does not invalidate the token itself.
+    """
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/api/auth/logout",
+            headers=_headers(token),
+            timeout=TIMEOUT,
+        )
+        if not resp.ok and resp.status_code != 401:
+            raise ApiError(f"Logout failed: {resp.text}", status_code=resp.status_code)
+    except requests.ConnectionError:
+        pass  # Network error — proceed client-side; token may still be valid server-side

@@ -18,6 +18,7 @@ from src.config import (
 from src.model.thresholds import classify_tier
 from src.views.api_client import (
     ApiError,
+    AuthExpiredError,
     approve_review,
     get_pending_reviews,
     get_review_detail,
@@ -160,13 +161,37 @@ def _render_review_card(
 
     col1, col2 = st.columns(2)
     with col1:
-        st.button(
-            "✓  Approve",
-            key=f"approve_{review_id}",
-            use_container_width=True,
-        )
-        if st.session_state.get(f"approve_{review_id}", False):
-            st.session_state[f"_pending_action_{review_id}"] = "approve"
+        if pending_action == "approve":
+            st.warning(
+                f"**Confirm approval** for Employee **{employee_id}**? "
+                "This will allow the intervention to proceed."
+            )
+            col_yes, col_no = st.columns(2)
+            with col_yes:
+                if st.button(
+                    "✓  Yes, approve",
+                    key=f"confirm_approve_{review_id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    st.session_state[f"_pending_action_{review_id}"] = "confirmed_approve"
+                    st.rerun()
+            with col_no:
+                if st.button(
+                    "✕  Cancel",
+                    key=f"cancel_approve_{review_id}",
+                    use_container_width=True,
+                ):
+                    st.session_state.pop(f"_pending_action_{review_id}", None)
+                    st.rerun()
+        else:
+            st.button(
+                "✓  Approve",
+                key=f"approve_{review_id}",
+                use_container_width=True,
+            )
+            if st.session_state.get(f"approve_{review_id}", False):
+                st.session_state[f"_pending_action_{review_id}"] = "approve"
     with col2:
         st.button(
             "↻  Override tier",
@@ -224,6 +249,8 @@ def _render_override_form(token: str, employee_id: str, review_id: int):
                         f"for {employee_id}. Reason logged."
                     )
                     st.rerun()
+                except AuthExpiredError:
+                    raise
                 except ApiError as e:
                     st.error(f"Override failed: {e}")
         with col2:
@@ -241,10 +268,12 @@ def render_reviewer_view(*, token: str):
     for key in [k for k in st.session_state if k.startswith("_pending_action_")]:
         review_id = int(key.replace("_pending_action_", ""))
         action = st.session_state.pop(key)
-        if action == "approve":
+        if action == "confirmed_approve":
             try:
                 approve_review(token, review_id)
                 st.success("Assessment approved. Intervention may proceed.")
+            except AuthExpiredError:
+                raise
             except ApiError as e:
                 st.error(f"Approve failed: {e}")
         elif action == "override":
@@ -253,10 +282,9 @@ def render_reviewer_view(*, token: str):
     # Fetch pending review list
     try:
         pending_data = get_pending_reviews(token)
+    except AuthExpiredError:
+        raise  # Bubble up to page_reviewer() wrapper for session clear + rerun
     except ApiError as e:
-        if e.status_code == 401:
-            st.error("Session expired. Please sign out and sign in again.")
-            return
         st.error(f"Failed to load pending reviews: {e}")
         return
 
@@ -273,6 +301,8 @@ def render_reviewer_view(*, token: str):
         try:
             detail = get_review_detail(token, rid)
             review_details[rid] = detail
+        except AuthExpiredError:
+            raise  # Bubble up to page_reviewer() wrapper
         except ApiError as e:
             st.warning(f"Could not load detail for review {rid}: {e}")
             review_details[rid] = {"review_id": rid, "risk_score": {}}

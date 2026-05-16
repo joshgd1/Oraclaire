@@ -44,7 +44,30 @@ def _validate_features(input_data: dict) -> pd.DataFrame:
     missing = [f for f in FEATURES if f not in input_data]
     if missing:
         raise ValueError(f"Missing required features: {missing}")
-    row = {f: [input_data[f]] for f in FEATURES}
+
+    # Range validation — out-of-range values are clipped to bounds,
+    # not rejected, so a slider at exactly 0.0 still produces a valid score.
+    _RANGES = {
+        "mental_fatigue_score": (1.0, 10.0),
+        "resource_allocation": (0.0, 10.0),
+        "tenure_days": (0.0, 3650.0),         # 0 to 10 years
+        "seniority_tier": (0.0, 5.0),
+        "wfh_setup": (0.0, 1.0),
+        "company_type": (0.0, 1.0),
+        "missing_ra": (0.0, 1.0),
+        "missing_mfs": (0.0, 1.0),
+        "tenure_fatigue": (0.0, 10.0),
+        "tenure_workload": (0.0, 10.0),
+    }
+    validated = {}
+    for feat, raw in input_data.items():
+        lo, hi = _RANGES.get(feat, (None, None))
+        if lo is not None and hi is not None:
+            validated[feat] = max(lo, min(hi, float(raw)))
+        else:
+            validated[feat] = raw
+
+    row = {f: [validated.get(f, input_data[f])] for f in FEATURES}
     return pd.DataFrame(row)
 
 

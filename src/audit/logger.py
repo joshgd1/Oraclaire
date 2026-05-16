@@ -25,18 +25,14 @@ def _utc_now() -> str:
 
 def _append(path: str, data: dict) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
-    # SPRINT 1: Single-user Streamlit — concurrent writes not expected.
-    # SPRINT 2: Add file locking before multi-user deployment.
-    # One-line fix when needed:
-    #   import fcntl
-    #   fcntl.flock(f, fcntl.LOCK_EX)
-    #   after the file is opened,
-    #   fcntl.flock(f, fcntl.LOCK_UN)
-    #   before the context manager exits.
-    # Without locking, concurrent writes to predictions.jsonl or pulse.jsonl
-    # can produce corrupt JSONL lines that silently break the audit trail.
+    import fcntl
+
     with open(path, "a", encoding="utf-8") as f:
-        f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+        try:
+            f.write(json.dumps(data, ensure_ascii=False) + "\n")
+        finally:
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
 
 
 def _read_prior_pulses(employee_id: str) -> list[dict]:

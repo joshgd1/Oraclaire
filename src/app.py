@@ -22,6 +22,7 @@ if _root not in sys.path:
 from src.model.train import run as train_model
 from src.views.api_client import (
     ApiError,
+    AuthExpiredError,
     get_employee_scores,
     get_employee_shap,
     get_employee_trajectory,
@@ -34,6 +35,7 @@ from src.views.api_client import (
     get_teams,
     get_trends,
     login,
+    logout,
 )
 from src.views.employee import render_employee_view
 from src.views.employee_ux import render_employee_ux
@@ -255,6 +257,14 @@ def _tier_badge_html(tier: str, probability: float) -> str:
         f'Score: <strong style="color:{THEME["text"]}">{probability:.1%}</strong></span>'
         f"</div>"
     )
+
+
+def _clear_auth():
+    """Clear auth session state after token expiry."""
+    for key in ["auth_token", "auth_employee_id", "auth_role"]:
+        st.session_state[key] = None
+    st.session_state.page_nav = "Employee"
+    st.session_state.ux_started = False
 
 
 def ensure_model():
@@ -526,8 +536,15 @@ def page_landing():
         if not emp_id:
             st.warning("Enter your Employee ID.")
         else:
+            # Rate limiting: lock out after 5 consecutive failed attempts
+            failed = st.session_state.get("login_failed_attempts", 0)
+            if failed >= 5:
+                st.error("Too many failed attempts. Please wait a moment before trying again.")
+                return
             try:
                 auth_data = login(emp_id)
+                # Success — reset rate-limit counter
+                st.session_state.login_failed_attempts = 0
                 st.session_state.auth_token = auth_data["token"]
                 st.session_state.auth_employee_id = emp_id
                 st.session_state.auth_role = auth_data.get("role", "")
@@ -540,8 +557,21 @@ def page_landing():
                 }.get(actual_role, "Employee")
                 st.session_state.page_nav = default_page
                 st.rerun()
+            except AuthExpiredError:
+                st.session_state.auth_token = None
+                st.session_state.auth_employee_id = None
+                st.session_state.auth_role = None
+                st.session_state.page_nav = "Employee"
+                st.session_state.ux_started = False
+                st.error("Session expired. Please sign in again.")
             except ApiError as e:
-                st.error(str(e))
+                # Increment failed-attempt counter for brute-force protection
+                st.session_state.login_failed_attempts = failed + 1
+                remaining = max(0, 5 - st.session_state.login_failed_attempts)
+                msg = str(e)
+                if remaining == 0:
+                    msg += " (locked out — too many attempts)"
+                st.error(msg)
             except Exception as e:
                 st.error(f"Login error: {e}")
 
@@ -652,6 +682,9 @@ def page_employee():
         scores_data = get_employee_scores(token)
         shap_data = get_employee_shap(token)
         trajectory_data = get_employee_trajectory(token)
+    except AuthExpiredError:
+        _clear_auth()
+        st.rerun()
     except ApiError as e:
         st.error(f"Failed to load your assessment data: {e}")
         return
@@ -695,6 +728,9 @@ def page_hr():
         teams_data = get_teams(token)
         exclusions_data = get_exclusions(token)
         participation_data = get_participation(token)
+    except AuthExpiredError:
+        _clear_auth()
+        st.rerun()
     except ApiError as e:
         st.error(f"Failed to load HR data: {e}")
         return
@@ -753,6 +789,9 @@ def page_manager():
 
     try:
         team_info = get_my_team(token)
+    except AuthExpiredError:
+        _clear_auth()
+        st.rerun()
     except ApiError as e:
         st.error(f"Failed to load team data: {e}")
         return
@@ -774,6 +813,9 @@ def page_manager():
         aggregate_data = get_team_aggregate(token, team_id)
         rec_data = get_team_recommendations(token, team_id)
         trajectory_data = get_team_trajectory(token, team_id)
+    except AuthExpiredError:
+        _clear_auth()
+        st.rerun()
     except ApiError as e:
         st.error(f"Failed to load team data: {e}")
         return
@@ -801,7 +843,11 @@ def page_manager():
 
 
 def page_reviewer(token: str):
-    render_reviewer_view(token=token)
+    try:
+        render_reviewer_view(token=token)
+    except AuthExpiredError:
+        _clear_auth()
+        st.rerun()
 
 
 def main():
@@ -825,6 +871,8 @@ def main():
         st.session_state.page_nav = "Employee"
     if "ux_started" not in st.session_state:
         st.session_state.ux_started = False
+    if "login_failed_attempts" not in st.session_state:
+        st.session_state.login_failed_attempts = 0
 
     # Role display/selection
     role_display_map = {
@@ -846,11 +894,9 @@ def main():
             st.caption(f"Role: {role_label}")
             st.markdown("---")
             if st.button("Sign out", use_container_width=True):
-                st.session_state.auth_token = None
-                st.session_state.auth_employee_id = None
-                st.session_state.auth_role = None
-                st.session_state.page_nav = "Employee"
-                st.session_state.ux_started = False
+                logout(st.session_state.get("auth_token", ""))
+                _clear_auth()
+                st.session_state.login_failed_attempts = 0
                 st.rerun()
 
             st.markdown("---")
