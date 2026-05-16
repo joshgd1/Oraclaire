@@ -267,6 +267,80 @@ def ensure_model():
         st.success("Model trained and saved.")
 
 
+def page_landing():
+    """Welcome landing page shown when not logged in and no demo started."""
+    st.markdown(
+        f'<div style="text-align:center;padding:60px 20px">'
+        f'<h1 style="font-size:2.5rem;font-weight:800;color:{THEME["text"]};margin-bottom:16px">'
+        f'How are you really doing?</h1>'
+        f'<p style="font-size:1.15rem;color:{THEME["text_secondary"]};max-width:500px;margin:0 auto 40px">'
+        f'Oraclaire helps teams understand and address burnout risk — '
+        f'privately, collaboratively, and early.</p></div>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown(
+            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
+            f'border-radius:14px;border:1px solid {THEME["border"]}">'
+            f'<div style="font-size:2rem;margin-bottom:12px">🔒</div>'
+            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Private</h3>'
+            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+            f'Individual results are never shared without consent.</p></div>',
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.markdown(
+            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
+            f'border-radius:14px;border:1px solid {THEME["border"]}">'
+            f'<div style="font-size:2rem;margin-bottom:12px">👥</div>'
+            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Team-focused</h3>'
+            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+            f'Managers see trends, never individual scores.</p></div>',
+            unsafe_allow_html=True,
+        )
+    with col3:
+        st.markdown(
+            f'<div style="text-align:center;padding:24px;background:{THEME["card_bg"]};'
+            f'border-radius:14px;border:1px solid {THEME["border"]}">'
+            f'<div style="font-size:2rem;margin-bottom:12px">💡</div>'
+            f'<h3 style="color:{THEME["text"]};margin-bottom:8px">Actionable</h3>'
+            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+            f'Get resources matched to what\'s actually affecting you.</p></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("---")
+
+    col_demo, col_signin = st.columns([1, 1])
+    with col_demo:
+        st.markdown(
+            f'<p style="text-align:center;color:{THEME["text_secondary"]};margin-bottom:12px">'
+            f'Want to see how it works?</p>',
+            unsafe_allow_html=True,
+        )
+        if st.button("Try the demo", use_container_width=True, type="secondary"):
+            st.session_state.ux_started = True
+            st.session_state.page_nav = "Employee"
+            st.rerun()
+
+    with col_signin:
+        st.markdown(
+            f'<p style="text-align:center;color:{THEME["text_secondary"]};margin-bottom:12px">'
+            f'Already have an account?</p>',
+            unsafe_allow_html=True,
+        )
+        st.caption("Sign in using the sidebar →")
+
+    st.markdown("---")
+    st.caption(
+        "Oraclaire is a burnout risk assessment tool. "
+        "Sign in with your employee credentials to access your personal dashboard, "
+        "or try the demo to see how it works."
+    )
+
+
 def page_employee():
     token = st.session_state.get("auth_token")
     employee_id = st.session_state.get("auth_employee_id")
@@ -544,6 +618,8 @@ def main():
         st.session_state.auth_role = None
     if "page_nav" not in st.session_state:
         st.session_state.page_nav = "Employee"
+    if "ux_started" not in st.session_state:
+        st.session_state.ux_started = False
 
     # Role display/selection
     role_display_map = {
@@ -605,6 +681,7 @@ def main():
                 st.session_state.auth_employee_id = None
                 st.session_state.auth_role = None
                 st.session_state.page_nav = "Employee"
+                st.session_state.ux_started = False
                 st.rerun()
 
         st.markdown("---")
@@ -618,6 +695,11 @@ def main():
             label_visibility="collapsed",
         )
         st.session_state.page_nav = page
+
+    # Show landing page when not logged in and demo not started
+    if not st.session_state.auth_token and not st.session_state.get("ux_started"):
+        page_landing()
+        return
 
     if page == "Employee":
         page_employee()
