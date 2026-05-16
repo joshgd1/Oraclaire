@@ -36,6 +36,7 @@ from src.views.api_client import (
     login,
 )
 from src.views.employee import render_employee_view
+from src.views.employee_ux import render_employee_ux
 from src.views.hr_aggregate import render_hr_view
 from src.views.manager import render_manager_view
 from src.views.reviewer import render_reviewer_view
@@ -43,18 +44,18 @@ from src.views.reviewer import render_reviewer_view
 # ── Theme constants ────────────────────────────────────────────────────────────
 
 THEME = {
-    "bg": "#f8f9fa",
-    "card_bg": "#ffffff",
+    "bg": "#1e1e2e",
+    "card_bg": "#2a2a3e",
     "primary": "#0d7377",
     "primary_light": "#14919b",
-    "text": "#1a1a2e",
-    "text_secondary": "#6c757d",
-    "border": "#dee2e6",
+    "text": "#e5e7eb",
+    "text_secondary": "#9ca3af",
+    "border": "#3d3d5c",
     "low_color": "#10b981",
     "moderate_color": "#f59e0b",
     "high_color": "#f97316",
     "critical_color": "#ef4444",
-    "sidebar_bg": "#1a1a2e",
+    "sidebar_bg": "#13131f",
     "sidebar_text": "#e5e7eb",
 }
 
@@ -121,6 +122,10 @@ def _inject_theme():
             border-radius: 8px !important;
             border: 1px solid {THEME['border']} !important;
             background: {THEME['card_bg']} !important;
+            color: {THEME['text']} !important;
+        }}
+        .stTextInput > div > div > input::placeholder, .stTextArea > div > div > textarea::placeholder {{
+            color: {THEME['text_secondary']} !important;
         }}
         /* Select boxes */
         .stSelectbox > div > div {{
@@ -267,79 +272,95 @@ def page_employee():
     employee_id = st.session_state.get("auth_employee_id")
 
     if not token or not employee_id:
-        # Demo mode: feature sliders + local scoring
-        with st.sidebar:
-            st.markdown("### Demo Assessment")
-            st.caption("Answer a few questions to see your burnout risk profile.")
-            demo_employee_id = st.text_input(
-                "Your name or ID",
-                value="EID_001",
-                placeholder="e.g. Alex Chen",
-                help="Used only to label your results in this demo.",
-            )
+        # Demo mode: full 5-screen UX with feature sliders to compute score
+        demo_employee_id = st.text_input(
+            "Your name or ID",
+            value="EID_001",
+            placeholder="e.g. Alex Chen",
+            key="demo_emp_id",
+        )
 
-            st.markdown("#### About your role")
-            tenure_years = st.selectbox(
-                "Time in this role",
-                options=[0, 1, 2, 3, 4, 5],
-                format_func=lambda x: [
-                    "< 6 months", "6–12 months", "1–2 years",
-                    "2–5 years", "5–10 years", "10+ years",
-                ][x],
-                index=2,
-            )
-            tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
-            tenure_days = tenure_map.get(tenure_years, 547)
+        # Feature sliders
+        tenure_years = st.selectbox(
+            "Time in this role",
+            options=[0, 1, 2, 3, 4, 5],
+            format_func=lambda x: [
+                "< 6 months", "6–12 months", "1–2 years",
+                "2–5 years", "5–10 years", "10+ years",
+            ][x],
+            index=2,
+            key="demo_tenure",
+        )
+        tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
+        tenure_days = tenure_map.get(tenure_years, 547)
 
-            st.markdown("#### How you've been feeling")
-            energy = st.slider(
-                "Energy level",
-                min_value=1.0, max_value=10.0, value=5.0, step=0.5,
-                help="1 = completely drained · 10 = full of energy",
-            )
-            workload = st.slider(
-                "Workload intensity",
-                min_value=0.0, max_value=10.0, value=5.0, step=0.5,
-                help="0 = very light · 10 = overwhelming",
-            )
+        energy = st.slider(
+            "Energy level",
+            min_value=1.0, max_value=10.0, value=5.0, step=0.5,
+            help="1 = running on empty · 10 = feeling energized",
+            key="demo_energy",
+        )
+        workload = st.slider(
+            "Workload",
+            min_value=0.0, max_value=10.0, value=5.0, step=0.5,
+            help="0 =轻松应付 · 10 =不堪重负",
+            key="demo_workload",
+        )
 
-            st.markdown("#### Your situation")
-            wfh = st.radio(
-                "Suitable WFH setup?",
-                options=["Yes", "No", "N/A"],
-                index=0, horizontal=True,
-            )
-            wfh_setup = 1 if wfh == "Yes" else 0
-            seniority_tier = st.selectbox(
-                "Role level",
-                options=[0, 1],
-                format_func=lambda x: "Senior / Principal / Director" if x == 1 else "Junior / Individual Contributor",
-                index=0,
-            )
+        wfh = st.radio(
+            "WFH setup",
+            options=["Yes", "No", "N/A"],
+            index=0, horizontal=True,
+            key="demo_wfh",
+        )
+        wfh_setup = 1 if wfh == "Yes" else 0
+        # 6-band MNC structure: Associate → VP/SVP
+        # Maps to seniority_tier 0-5 for model scoring
+        seniority_tier = st.selectbox(
+            "Role level",
+            options=[0, 1, 2, 3, 4, 5],
+            format_func=lambda x: [
+                "Associate / IC1",
+                "Senior Associate / IC2",
+                "Manager / IC3",
+                "Senior Manager / IC4",
+                "Director / VP / IC5",
+                "Senior Director / SVP / IC6+",
+            ][x],
+            index=0,
+            key="demo_seniority",
+        )
 
-            features = {
-                "tenure_days": float(tenure_days),
-                "mental_fatigue_score": float(energy),
-                "resource_allocation": float(workload),
-                "wfh_setup": float(wfh_setup),
-                "company_type": 0.0,
-                "seniority_tier": float(seniority_tier),
-                "missing_ra": 0.0,
-                "missing_mfs": 0.0,
-                "tenure_fatigue": 5.0,
-                "tenure_workload": 5.0,
-            }
+        features = {
+            "tenure_days": float(tenure_days),
+            "mental_fatigue_score": float(energy),
+            "resource_allocation": float(workload),
+            "wfh_setup": float(wfh_setup),
+            "company_type": 0.0,
+            "seniority_tier": float(seniority_tier),
+            "missing_ra": 0.0,
+            "missing_mfs": 0.0,
+            "tenure_fatigue": 5.0,
+            "tenure_workload": 5.0,
+        }
 
-            st.markdown("---")
-            if st.button("Run assessment", use_container_width=True):
-                render_employee_view(
-                    employee_id=demo_employee_id,
-                    features=features,
-                    seniority_tier=seniority_tier,
-                    auth_token=None,
-                )
-            else:
-                st.info("Answer the questions above and click **Run assessment**.")
+        st.markdown("---")
+        if st.button("Run assessment", key="run_demo", use_container_width=True):
+            # Bypass check-in screen go straight to result
+            st.session_state.ux_demo_features = features
+            st.session_state.ux_demo_seniority = seniority_tier
+            st.session_state.ux_demo_employee_id = demo_employee_id
+            st.session_state.ux_screen = "result"
+            st.rerun()
+
+        if st.session_state.get("ux_screen") in ("result", "factors", "resources", "trend", "done"):
+            render_employee_ux(
+                employee_id=st.session_state.get("ux_demo_employee_id", demo_employee_id),
+                features=st.session_state.get("ux_demo_features", features),
+                seniority_tier=st.session_state.get("ux_demo_seniority", seniority_tier),
+            )
+        else:
+            st.info("Answer the questions above and click **Run assessment** to see your results.")
 
         st.caption(
             "Demo mode — results are calculated locally and never stored. "
@@ -368,7 +389,7 @@ def page_employee():
     shap_values = shap_data.get("shap_values", [])
     resources = latest.get("resources", [])
 
-    render_employee_view(
+    render_employee_ux(
         employee_id=employee_id,
         features=None,
         seniority_tier=None,
@@ -377,7 +398,6 @@ def page_employee():
         shap=shap_values,
         resources=resources,
         trajectory_data=trajectory_data,
-        auth_token=token,
     )
 
 
@@ -522,47 +542,82 @@ def main():
         st.session_state.auth_employee_id = None
     if "auth_role" not in st.session_state:
         st.session_state.auth_role = None
+    if "page_nav" not in st.session_state:
+        st.session_state.page_nav = "Employee"
+
+    # Role display/selection
+    role_display_map = {
+        "employee": "Employee",
+        "manager": "Manager",
+        "hr_admin": "HR Admin",
+        "system_admin": "System Admin",
+    }
 
     with st.sidebar:
         st.markdown("### Oraclaire")
         st.caption("Burnout Risk Assessment")
         st.markdown("---")
 
-        login_emp_id = st.text_input(
-            "Employee ID",
-            value=st.session_state.auth_employee_id or "",
-            placeholder="e.g. 1",
-        )
-        if st.button("Sign in", use_container_width=True):
-            if login_emp_id.strip():
-                try:
-                    auth_data = login(login_emp_id.strip())
-                    st.session_state.auth_token = auth_data["token"]
-                    st.session_state.auth_employee_id = login_emp_id.strip()
-                    st.session_state.auth_role = auth_data.get("role", "")
-                    st.rerun()
-                except ApiError as e:
-                    st.error(str(e))
-                except Exception as e:
-                    st.error(f"Login error: {e}")
-
-        if st.session_state.auth_token:
+        if not st.session_state.auth_token:
+            st.markdown("**Sign in**")
+            login_role = st.selectbox(
+                "Your role",
+                options=list(role_display_map.values()),
+                index=0,
+                label_visibility="collapsed",
+            )
+            login_emp_id = st.text_input(
+                "Employee ID",
+                value="",
+                placeholder="e.g. 1",
+                label_visibility="collapsed",
+            )
+            if st.button("Sign in", use_container_width=True, type="primary"):
+                if not login_emp_id.strip():
+                    st.warning("Enter your Employee ID.")
+                else:
+                    try:
+                        auth_data = login(login_emp_id.strip())
+                        st.session_state.auth_token = auth_data["token"]
+                        st.session_state.auth_employee_id = login_emp_id.strip()
+                        st.session_state.auth_role = auth_data.get("role", "")
+                        # Determine initial page from actual returned role
+                        actual_role = auth_data.get("role", "employee")
+                        default_page = {
+                            "employee": "Employee",
+                            "manager": "Manager",
+                            "hr_admin": "HR Aggregate",
+                            "system_admin": "HR Aggregate",
+                        }.get(actual_role, "Employee")
+                        st.session_state.page_nav = default_page
+                        st.rerun()
+                    except ApiError as e:
+                        st.error(str(e))
+                    except Exception as e:
+                        st.error(f"Login error: {e}")
+        else:
+            role_label = role_display_map.get(st.session_state.auth_role, st.session_state.auth_role)
             st.success(f"**{st.session_state.auth_employee_id}**")
-            st.caption(f"Role: {st.session_state.auth_role}")
+            st.caption(f"Role: {role_label}")
             st.markdown("---")
             if st.button("Sign out", use_container_width=True):
                 st.session_state.auth_token = None
                 st.session_state.auth_employee_id = None
                 st.session_state.auth_role = None
+                st.session_state.page_nav = "Employee"
                 st.rerun()
 
         st.markdown("---")
         st.markdown("#### Navigate")
+        page_options = ["Employee", "HR Aggregate", "Manager", "Reviewer"]
+        current_index = page_options.index(st.session_state.page_nav) if st.session_state.page_nav in page_options else 0
         page = st.selectbox(
             "View",
-            options=["Employee", "HR Aggregate", "Manager", "Reviewer"],
+            options=page_options,
+            index=current_index,
             label_visibility="collapsed",
         )
+        st.session_state.page_nav = page
 
     if page == "Employee":
         page_employee()

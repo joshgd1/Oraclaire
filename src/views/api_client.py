@@ -256,7 +256,7 @@ def get_my_team(token: str) -> dict[str, Any]:
     """
     try:
         resp = requests.get(
-            f"{API_BASE_URL}/api/manager/me",
+            f"{API_BASE_URL}/api/team/me",
             headers=_headers(token),
             timeout=TIMEOUT,
         )
