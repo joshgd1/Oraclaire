@@ -284,20 +284,14 @@ def page_landing():
         "system_admin": "System Admin",
     }
 
-    # ── Fonts (no global override) ───────────────────────────────────────
-    st.markdown(
+    # ── Fonts + scoped landing styles via st.html (not st.markdown) ──────
+    # st.html() properly renders raw HTML; st.markdown() can escape tags
+    # in some Streamlit versions, showing raw HTML as text.
+    st.html(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap');
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
-    # ── Scoped landing styles — all fixed-position, never touch .stApp ─────
-    st.markdown(
-        """
-        <style>
         /* Landing page root — fixed split, no global bleed */
         section[data-testid="stMain"] {
             position: fixed !important;
@@ -309,262 +303,192 @@ def page_landing():
             background: #ffffff !important;
         }
         /* Hide sidebar on landing page */
-        [data-testid="stSidebar"] {
-            display: none !important;
-        }
+        [data-testid="stSidebar"] { display: none !important; }
+
         /* Left panel: teal gradient, 40% width, full height */
         div.login-left {
             position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 40vw !important;
-            height: 100vh !important;
+            top: 0 !important; left: 0 !important;
+            width: 40vw !important; height: 100vh !important;
             background: linear-gradient(155deg, #0a3d47 0%, #0d5650 35%, #0d7377 60%, #14919b 100%);
-            display: flex !important;
-            flex-direction: column !important;
+            display: flex !important; flex-direction: column !important;
             justify-content: center !important;
             padding: 60px 52px !important;
             box-sizing: border-box !important;
-            overflow: hidden !important;
-            z-index: 1 !important;
+            overflow: hidden !important; z-index: 1 !important;
         }
         /* Right panel: white, 60% width, full height */
         div.login-right {
             position: fixed !important;
-            top: 0 !important;
-            right: 0 !important;
-            width: 60vw !important;
-            height: 100vh !important;
+            top: 0 !important; right: 0 !important;
+            width: 60vw !important; height: 100vh !important;
             background: #ffffff !important;
-            display: flex !important;
-            align-items: center !important;
+            display: flex !important; align-items: center !important;
             justify-content: center !important;
             padding: 60px 48px !important;
             box-sizing: border-box !important;
-            overflow-y: auto !important;
-            z-index: 1 !important;
+            overflow-y: auto !important; z-index: 1 !important;
         }
         /* Card within right panel */
         div.login-card {
-            width: 100% !important;
-            max-width: 420px !important;
+            width: 100% !important; max-width: 420px !important;
         }
         /* Left panel decorative blobs */
         div.login-blob1 {
-            position: absolute !important;
-            top: -120px !important;
-            right: -100px !important;
-            width: 420px !important;
-            height: 420px !important;
+            position: absolute !important; top: -120px !important; right: -100px !important;
+            width: 420px !important; height: 420px !important;
             border-radius: 50% !important;
             background: rgba(20,145,155,0.22) !important;
-            filter: blur(60px) !important;
-            pointer-events: none !important;
+            filter: blur(60px) !important; pointer-events: none !important;
         }
         div.login-blob2 {
-            position: absolute !important;
-            bottom: -80px !important;
-            left: -60px !important;
-            width: 320px !important;
-            height: 320px !important;
+            position: absolute !important; bottom: -80px !important; left: -60px !important;
+            width: 320px !important; height: 320px !important;
             border-radius: 50% !important;
             background: rgba(13,115,119,0.35) !important;
-            filter: blur(50px) !important;
-            pointer-events: none !important;
+            filter: blur(50px) !important; pointer-events: none !important;
         }
         div.login-dot1 {
-            position: absolute !important;
-            top: 80px !important;
-            right: 50px !important;
-            width: 14px !important;
-            height: 14px !important;
+            position: absolute !important; top: 80px !important; right: 50px !important;
+            width: 14px !important; height: 14px !important;
             border-radius: 50% !important;
-            background: rgba(255,255,255,0.25) !important;
-            pointer-events: none !important;
+            background: rgba(255,255,255,0.25) !important; pointer-events: none !important;
         }
         div.login-dot2 {
-            position: absolute !important;
-            bottom: 140px !important;
-            left: 40px !important;
-            width: 8px !important;
-            height: 8px !important;
+            position: absolute !important; bottom: 140px !important; left: 40px !important;
+            width: 8px !important; height: 8px !important;
             border-radius: 50% !important;
-            background: rgba(255,255,255,0.18) !important;
-            pointer-events: none !important;
+            background: rgba(255,255,255,0.18) !important; pointer-events: none !important;
         }
-        /* Form inputs (scoped to login-right) */
+        /* Form inputs scoped to login-right */
         div.login-right .stTextInput > div > div > input {
-            border-radius: 10px !important;
-            border: 1.5px solid #e5e7eb !important;
-            background: #f9fafb !important;
-            color: #111827 !important;
-            font-size: 0.9rem !important;
-            padding: 10px 14px !important;
-            width: 100% !important;
-            transition: border-color 0.15s !important;
+            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
+            background: #f9fafb !important; color: #111827 !important;
+            font-size: 0.9rem !important; padding: 10px 14px !important;
+            width: 100% !important; transition: border-color 0.15s !important;
         }
         div.login-right .stTextInput > div > div > input:focus {
-            border-color: #0d7377 !important;
-            background: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
-            outline: none !important;
+            border-color: #0d7377 !important; background: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important; outline: none !important;
         }
-        div.login-right .stTextInput > div > div > input::placeholder {
-            color: #9ca3af !important;
-        }
+        div.login-right .stTextInput > div > div > input::placeholder { color: #9ca3af !important; }
         div.login-right .stSelectbox > div > div {
-            border-radius: 10px !important;
-            border: 1.5px solid #e5e7eb !important;
-            background: #f9fafb !important;
-            width: 100% !important;
+            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
+            background: #f9fafb !important; width: 100% !important;
         }
-        div.login-right .stSelectbox label {
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.8rem !important;
-            font-weight: 600 !important;
-            color: #374151 !important;
-            margin-bottom: 6px !important;
-        }
+        div.login-right .stSelectbox label,
         div.login-right .stTextInput label {
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.8rem !important;
-            font-weight: 600 !important;
-            color: #374151 !important;
-            margin-bottom: 6px !important;
+            font-family: 'Inter', sans-serif !important; font-size: 0.8rem !important;
+            font-weight: 600 !important; color: #374151 !important; margin-bottom: 6px !important;
         }
         /* Primary submit button */
         div.login-right div[data-testid="stFormSubmitButton"] > button {
-            width: 100% !important;
-            background: #0d7377 !important;
-            color: #ffffff !important;
-            border: none !important;
-            border-radius: 10px !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important;
-            font-weight: 600 !important;
-            padding: 11px 20px !important;
+            width: 100% !important; background: #0d7377 !important; color: #ffffff !important;
+            border: none !important; border-radius: 10px !important;
+            font-family: 'Inter', sans-serif !important; font-size: 0.9rem !important;
+            font-weight: 600 !important; padding: 11px 20px !important;
             transition: background 0.15s, transform 0.1s !important;
         }
         div.login-right div[data-testid="stFormSubmitButton"] > button:hover {
-            background: #0a5f66 !important;
-            transform: translateY(-1px) !important;
-        }
-        /* Secondary button */
-        div.login-right .stForm > div:last-child > div > div > div:last-child > button {
-            background: #ffffff !important;
-            color: #374151 !important;
-            border: 1.5px solid #e5e7eb !important;
-            border-radius: 10px !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important;
-            font-weight: 600 !important;
-            padding: 11px 20px !important;
-            transition: all 0.15s !important;
-            width: 100% !important;
-        }
-        div.login-right .stForm > div:last-child > div > div > div:last-child > button:hover {
-            border-color: #0d7377 !important;
-            color: #0d7377 !important;
+            background: #0a5f66 !important; transform: translateY(-1px) !important;
         }
         /* Ensure Streamlit main block doesn't interfere */
         .stMainBlockContainer {
-            width: 100% !important;
-            max-width: 100% !important;
-            padding: 0 !important;
+            width: 100% !important; max-width: 100% !important; padding: 0 !important;
         }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
-    # ── Left panel HTML ─────────────────────────────────────────────────
-    left_html = """
-    <div class="login-left">
-        <div class="login-blob1"></div>
-        <div class="login-blob2"></div>
-        <div class="login-dot1"></div>
-        <div class="login-dot2"></div>
+    # ── Left panel HTML via st.html ─────────────────────────────────────
+    st.html(
+        """
+        <div class="login-left">
+            <div class="login-blob1"></div>
+            <div class="login-blob2"></div>
+            <div class="login-dot1"></div>
+            <div class="login-dot2"></div>
 
-        <!-- Logo mark -->
-        <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:48px;position:relative;z-index:1">
-            <div style="width:44px;height:44px;background:rgba(255,255,255,0.15);border-radius:12px;
-                        display:flex;align-items:center;justify-content:center;
-                        backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2)">
-                <span style="font-size:1.4rem">🧠</span>
+            <!-- Logo mark -->
+            <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:48px;position:relative;z-index:1">
+                <div style="width:44px;height:44px;background:rgba(255,255,255,0.15);border-radius:12px;
+                            display:flex;align-items:center;justify-content:center;
+                            backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2)">
+                    <span style="font-size:1.4rem">🧠</span>
+                </div>
+                <span style="font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:700;
+                            color:#ffffff;letter-spacing:-0.01em">Oraclaire</span>
             </div>
-            <span style="font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:700;
-                        color:#ffffff;letter-spacing:-0.01em">Oraclaire</span>
-        </div>
 
-        <!-- Headline -->
-        <h1 style="font-family:'DM Serif Display',Georgia,serif;font-size:2.8rem;font-weight:400;
-                  color:#ffffff;line-height:1.18;margin:0 0 20px 0;letter-spacing:-0.02em;
-                  position:relative;z-index:1">Your wellbeing,<br>protected.</h1>
+            <!-- Headline -->
+            <h1 style="font-family:'DM Serif Display',Georgia,serif;font-size:2.8rem;font-weight:400;
+                      color:#ffffff;line-height:1.18;margin:0 0 20px 0;letter-spacing:-0.02em;
+                      position:relative;z-index:1">Your wellbeing,<br>protected.</h1>
 
-        <!-- Tagline -->
-        <p style="font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:400;
-                  color:rgba(255,255,255,0.72);line-height:1.65;margin:0 0 52px 0;
-                  max-width:300px;position:relative;z-index:1">
-            Burnout risk insights for you and your team — private, collaborative, and early.
-            Used by HR teams at forward-thinking companies.
-        </p>
+            <!-- Tagline -->
+            <p style="font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:400;
+                      color:rgba(255,255,255,0.72);line-height:1.65;margin:0 0 52px 0;
+                      max-width:300px;position:relative;z-index:1">
+                Burnout risk insights for you and your team — private, collaborative, and early.
+                Used by HR teams at forward-thinking companies.
+            </p>
 
-        <!-- Feature pills -->
-        <div style="position:relative;z-index:1">
-            <div style="display:inline-flex;align-items:center;gap:8px;
-                        background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                        border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                <span style="font-size:0.8rem">🔒</span>
-                <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                            color:rgba(255,255,255,0.88)">End-to-end encrypted</span>
+            <!-- Feature pills -->
+            <div style="position:relative;z-index:1">
+                <div style="display:inline-flex;align-items:center;gap:8px;
+                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
+                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
+                    <span style="font-size:0.8rem">🔒</span>
+                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
+                                color:rgba(255,255,255,0.88)">End-to-end encrypted</span>
+                </div>
+                <div style="display:inline-flex;align-items:center;gap:8px;
+                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
+                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
+                    <span style="font-size:0.8rem">👥</span>
+                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
+                                color:rgba(255,255,255,0.88)">Managers see trends only</span>
+                </div>
+                <div style="display:inline-flex;align-items:center;gap:8px;
+                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
+                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
+                    <span style="font-size:0.8rem">✓</span>
+                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
+                                color:rgba(255,255,255,0.88)">HR-validated methodology</span>
+                </div>
             </div>
-            <div style="display:inline-flex;align-items:center;gap:8px;
-                        background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                        border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                <span style="font-size:0.8rem">👥</span>
-                <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                            color:rgba(255,255,255,0.88)">Managers see trends only</span>
-            </div>
-            <div style="display:inline-flex;align-items:center;gap:8px;
-                        background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                        border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                <span style="font-size:0.8rem">✓</span>
-                <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                            color:rgba(255,255,255,0.88)">HR-validated methodology</span>
-            </div>
-        </div>
 
-        <!-- Copyright -->
-        <div style="position:absolute;bottom:32px;left:52px;font-family:'Inter',sans-serif;
-                    font-size:0.72rem;color:rgba(255,255,255,0.38);z-index:1">
-            © 2026 Oraclaire. All rights reserved.
-        </div>
-    </div>
-    """
-    st.markdown(left_html, unsafe_allow_html=True)
-
-    # ── Right panel: form card + Streamlit fields ─────────────────────
-    right_html = """
-    <div class="login-right">
-        <div class="login-card">
-            <div style="margin-bottom:36px">
-                <h2 style="font-family:'Inter',sans-serif;font-size:1.55rem;font-weight:700;
-                          color:#111827;margin:0 0 8px 0;letter-spacing:-0.025em">
-                    Sign in to Oraclaire
-                </h2>
-                <p style="font-family:'Inter',sans-serif;font-size:0.875rem;color:#6b7280;
-                          margin:0;line-height:1.5">
-                    Access your personalised burnout risk dashboard
-                </p>
+            <!-- Copyright -->
+            <div style="position:absolute;bottom:32px;left:52px;font-family:'Inter',sans-serif;
+                        font-size:0.72rem;color:rgba(255,255,255,0.38);z-index:1">
+                © 2026 Oraclaire. All rights reserved.
             </div>
         </div>
-    </div>
-    """
-    st.markdown(right_html, unsafe_allow_html=True)
+        """
+    )
 
-    # ── Streamlit form fields (inside the right panel div) ───────────────
+    # ── Right panel header HTML via st.html ─────────────────────────────
+    st.html(
+        """
+        <div class="login-right">
+            <div class="login-card">
+                <div style="margin-bottom:36px">
+                    <h2 style="font-family:'Inter',sans-serif;font-size:1.55rem;font-weight:700;
+                              color:#111827;margin:0 0 8px 0;letter-spacing:-0.025em">
+                        Sign in to Oraclaire
+                    </h2>
+                    <p style="font-family:'Inter',sans-serif;font-size:0.875rem;color:#6b7280;
+                              margin:0;line-height:1.5">
+                        Access your personalised burnout risk dashboard
+                    </p>
+                </div>
+            </div>
+        </div>
+        """
+    )
+
+    # ── Streamlit form fields (rendered by Streamlit into the right panel) ──
     with st.container():
-        st.markdown("<div class='login-right'><div class='login-card'>", unsafe_allow_html=True)
         with st.form("login_form", clear_on_submit=False):
             st.selectbox(
                 "Your role",
@@ -590,7 +514,6 @@ def page_landing():
                     "Try demo",
                     use_container_width=True,
                 )
-        st.markdown("</div></div>", unsafe_allow_html=True)
 
     # ── Handle form submission ────────────────────────────────────────────
     if demo_clicked:
