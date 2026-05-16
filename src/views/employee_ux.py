@@ -1,15 +1,19 @@
 """
-Employee-facing UX — 5-screen flow.
+Employee-facing UX — 6-screen flow.
 
 Screen 1: Weekly check-in (one question, five options)
 Screen 2: Your result (privacy notice, plain label, one action)
-Screen 3: What is affecting this (three plain sentences)
-Screen 4: What might help (matched resources, max 3)
-Screen 5: Your trend (simple line, no numbers)
+Screen 3: Wellbeing dimensions (radar chart, all 8 axes)
+Screen 4: What is affecting this (three plain sentences)
+Screen 5: What might help (matched resources, max 3)
+Screen 6: Your trend (simple line, no numbers)
 
 Mobile-first. No jargon. Privacy notice visible on every result screen.
 """
 
+from typing import Literal
+
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.config import FEATURE_LABELS, RESOURCES
@@ -346,7 +350,175 @@ def screen_resources(top_feature: str, tier: str, on_done) -> bool:
     return st.button("Done for now", key="done", use_container_width=True)
 
 
-# ── Screen 5: Your trend ──────────────────────────────────────────────────
+# ── Screen 5: Wellbeing Dimensions Radar ───────────────────────────────────
+
+def _compute_radar_from_features(features: dict, seniority_tier: int) -> dict:
+    """Derive 0-100 risk scores for each wellbeing dimension from feature values."""
+
+    def _scale(value: float, lo: float, hi: float, invert: bool = False) -> float:
+        """Normalise value to 0-100, inverting if invert=True (lower raw = higher risk)."""
+        normalized = (value - lo) / (hi - lo) if hi != lo else 0.5
+        normalized = max(0.0, min(1.0, normalized))
+        return round((1 - normalized if invert else normalized) * 100, 1)
+
+    return {
+        "Energy": _scale(
+            features.get("mental_fatigue_score", 5.0), 1.0, 10.0, invert=True
+        ),
+        "Workload": _scale(
+            features.get("resource_allocation", 5.0), 0.0, 10.0, invert=False
+        ),
+        "Tenure Pressure": _scale(
+            features.get("tenure_days", 547), 0.0, 3650.0, invert=False
+        ),
+        "Work Arrangement": (
+            100.0
+            if features.get("wfh_setup", 1.0) == 0.0
+            else 30.0
+        ),
+        "Role Demands": _scale(
+            features.get("seniority_tier", 0.0), 0.0, 5.0, invert=False
+        ),
+        "Company Context": 50.0,  # not modifiable; neutral
+        "Fatigue Trend": _scale(
+            features.get("tenure_fatigue", 5.0), 0.0, 10.0, invert=True
+        ),
+        "Workload Trend": _scale(
+            features.get("tenure_workload", 5.0), 0.0, 10.0, invert=False
+        ),
+    }
+
+
+def _compute_radar_from_shap(shap_decomposition: list[dict]) -> dict:
+    """Derive 0-100 risk scores from SHAP impact values.
+
+    Uses normalised absolute SHAP impact so the largest-contributing
+    dimension always scores 100; others scale proportionally.
+    """
+    feat_map = {item["feature"]: item["impact_value"] for item in shap_decomposition}
+
+    impacts = {
+        "Energy": abs(feat_map.get("mental_fatigue_score", 0)),
+        "Workload": abs(feat_map.get("resource_allocation", 0)),
+        "Tenure Pressure": abs(feat_map.get("tenure_days", 0)),
+        "Work Arrangement": abs(feat_map.get("wfh_setup", 0)),
+        "Role Demands": abs(feat_map.get("seniority_tier", 0)),
+        "Company Context": abs(feat_map.get("company_type", 0)),
+        "Fatigue Trend": abs(feat_map.get("tenure_fatigue", 0)),
+        "Workload Trend": abs(feat_map.get("tenure_workload", 0)),
+    }
+
+    max_impact = max(impacts.values()) or 1.0
+    return {dim: round((impact / max_impact) * 100, 1) for dim, impact in impacts.items()}
+
+
+def _tier_color(tier: str) -> str:
+    return {"low": "#10b981", "moderate": "#f59e0b", "high": "#f97316", "critical": "#ef4444"}.get(
+        tier.lower(), "#0d7377"
+    )
+
+
+def screen_radar(
+    radar_values: dict,
+    tier: str,
+    on_see_factors,
+):
+    """
+    Render the wellbeing dimensions radar chart.
+    Returns True if user clicked 'See what's affecting this'.
+    """
+    st.markdown(
+        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
+        f"Wellbeing dimensions</p>",
+        unsafe_allow_html=True,
+    )
+    st.title("Your wellbeing at a glance")
+
+    _privacy_card()
+
+    _section_title("How you're doing across each dimension")
+
+    # ── Build Plotly radar ──────────────────────────────────────────────
+    dimensions = list(radar_values.keys())
+    values = list(radar_values.values())
+
+    tier_color = _tier_color(tier)
+
+    fig = go.Figure(
+        data=[
+            go.Scatterpolar(
+                r=values + [values[0]],  # close the polygon
+                theta=dimensions + [dimensions[0]],
+                fill="toself",
+                fillcolor=f"{tier_color}30",
+                line_color=tier_color,
+                line_width=2.5,
+                marker=dict(size=6, color=tier_color),
+                hoverinfo="r+theta",
+            )
+        ]
+    )
+
+    fig.update_layout(
+        polar=dict(
+            bgcolor="rgba(0,0,0,0)",
+            radialaxis=dict(
+                range=[0, 100],
+                tickvals=[0, 25, 50, 75, 100],
+                ticktext=["0", "25", "50", "75", "100"],
+                tickfont=dict(color="#9ca3af", size=10),
+                tickcolor="#3d3d5c",
+                linecolor="#3d3d5c",
+                gridcolor="#3d3d5c",
+                showticklabels=True,
+                side="clockwise",
+            ),
+            angularaxis=dict(
+                tickfont=dict(color="#e5e7eb", size=11, family="Inter, sans-serif"),
+                tickcolor="#3d3d5c",
+                linecolor="#3d3d5c",
+                gridcolor="#3d3d5c",
+                rotation=90,
+                direction="clockwise",
+            ),
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        margin=dict(l=20, r=20, t=20, b=20),
+        height=420,
+        width=None,
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Tier context label under the chart
+    st.markdown(
+        f'<p style="text-align:center;color:{THEME["text_secondary"]};'
+        f'font-size:0.8rem;margin-top:-8px;margin-bottom:20px">'
+        f"0 = lower risk &nbsp;·&nbsp; 100 = higher risk &nbsp;·&nbsp; "
+        f'Your overall level: <strong style="color:{tier_color}">'
+        f'{tier.upper()}</strong></p>',
+        unsafe_allow_html=True,
+    )
+
+    col1, col2 = st.columns([1, 1])
+    with col2:
+        see_factors = st.button(
+            "See what's affecting this →",
+            key="see_factors_from_radar",
+            use_container_width=True,
+        )
+    with col1:
+        if st.button("← Back", key="back_from_radar", use_container_width=True):
+            st.session_state.ux_screen = "result"
+            st.rerun()
+
+    return see_factors
+
+
+# ── Screen 6: Your trend ──────────────────────────────────────────────────
 
 def screen_trend(trajectory_data: dict | None):
     """
@@ -458,6 +630,9 @@ def render_employee_ux(
 
         top_feature = shap_decomposition[0].get("feature", "") if shap_decomposition else ""
 
+        # Compute radar values for demo mode (from raw features)
+        radar_values = _compute_radar_from_features(features, seniority_tier)
+
     else:
         if risk_tier is None:
             st.error("Provide features+seniority_tier or risk_tier.")
@@ -467,8 +642,14 @@ def render_employee_ux(
         shap_decomposition = shap or []
         top_feature = shap_decomposition[0].get("feature", "") if shap_decomposition else ""
 
+        # Compute radar values for API mode (from SHAP decomposition)
+        radar_values = _compute_radar_from_shap(shap_decomposition)
+
+    # ── Store for radar screen ──────────────────────────────────────────────
+    st.session_state.radar_values = radar_values
+
     # ── State machine: which screen are we on? ─────────────────────────────
-    # States: checkin → result → factors → resources → done
+    # States: checkin → result → radar → factors → resources → trend → done
     if "ux_screen" not in st.session_state:
         st.session_state.ux_screen = "checkin"
 
@@ -492,12 +673,34 @@ def render_employee_ux(
         if screen_result(tier, probability, on_see_factors):
             return  # state updated, rerun will show next screen
 
-        # Trend link
-        if st.button("See your trend →", key="see_trend", use_container_width=True):
-            st.session_state.ux_screen = "trend"
+        col_dim, col_trend = st.columns([1, 1])
+        with col_dim:
+            if st.button("See your dimensions →", key="see_radar", use_container_width=True):
+                st.session_state.ux_screen = "radar"
+                st.rerun()
+        with col_trend:
+            if st.button("See your trend →", key="see_trend", use_container_width=True):
+                st.session_state.ux_screen = "trend"
+                st.rerun()
+
+    # ── Screen 3: Wellbeing dimensions (radar) ───────────────────────────
+    elif screen == "radar":
+        def on_see_factors():
+            st.session_state.ux_screen = "factors"
             st.rerun()
 
-    # ── Screen 3: What is affecting this ───────────────────────────────
+        if screen_radar(
+            st.session_state.get("radar_values", {}),
+            tier,
+            on_see_factors,
+        ):
+            return
+
+        if st.button("← Back to my result", key="back_from_radar_main", use_container_width=True):
+            st.session_state.ux_screen = "result"
+            st.rerun()
+
+    # ── Screen 4: What is affecting this ───────────────────────────────
     elif screen == "factors":
         def on_see_help():
             st.session_state.ux_screen = "resources"
