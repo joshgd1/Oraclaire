@@ -19,11 +19,19 @@ TIER_THEME_MGR = {
     "critical": "#ef4444",
 }
 
+THEME_MGR = {
+    "card_bg": "#2a2a3e",
+    "border": "#3d3d5c",
+    "text": "#e5e7eb",
+    "text_secondary": "#9ca3af",
+    "bg": "#1e1e2e",
+}
+
 
 def render_header(team_name: str):
     st.markdown(
-        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        'letter-spacing:0.08em;color:#6c757d;margin:0">Manager</p>',
+        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:{THEME_MGR["text_secondary"]};margin:0">Manager</p>',
         unsafe_allow_html=True,
     )
     st.title(f"Team: {team_name}")
@@ -52,12 +60,12 @@ def render_tier_distribution(cycles: list[dict], current_tiers: dict[str, int]):
         icon = tier_icons.get(tier, "")
         with cols[idx]:
             st.markdown(
-                f'<div style="text-align:center;padding:20px 12px;background:#ffffff;'
-                f'border:1px solid #dee2e6;border-radius:12px;margin-bottom:12px;'
-                f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                f'<div style="text-align:center;padding:20px 12px;background:{THEME_MGR["card_bg"]};'
+                f'border:1px solid {THEME_MGR["border"]};border-radius:12px;margin-bottom:12px;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
                 f'<div style="font-size:1.8rem;margin-bottom:4px">{icon}</div>'
                 f'<div style="font-size:1.6rem;font-weight:800;color:{color}">{pct:.0%}</div>'
-                f'<div style="color:#6c757d;font-size:0.8rem;text-transform:uppercase;'
+                f'<div style="color:{THEME_MGR["text_secondary"]};font-size:0.8rem;text-transform:uppercase;'
                 f'letter-spacing:0.04em">{tier}</div>'
                 f'<div style="color:#9ca3af;font-size:0.78rem;margin-top:4px">{count} people</div>'
                 f'</div>',
@@ -125,8 +133,8 @@ def render_recommendations(top_factors: list[dict], resources: list[str], worst_
         st.caption(tier_prefix.get(worst_tier, "Resources:"))
         for resource in resources:
             st.markdown(
-                f'<div style="padding:8px 12px;background:#f8f9fa;border-radius:6px;'
-                f'border-left:3px solid #0d7377;margin-bottom:6px;color:#1a1a2e">'
+                f'<div style="padding:8px 12px;background:{THEME_MGR["bg"]};border-radius:6px;'
+                f'border-left:3px solid #0d7377;margin-bottom:6px;color:{THEME_MGR["text"]}">'
                 f"{resource}</div>",
                 unsafe_allow_html=True,
             )
@@ -187,7 +195,7 @@ def render_team_trajectory(
             f'<span style="font-size:1.8rem;font-weight:800;color:{color}">{icon}</span>'
             f'<div>'
             f'<strong style="color:{color}">{label}</strong><br>'
-            f'<span style="color:#6c757d;font-size:0.85rem">'
+            f'<span style="color:{THEME_MGR["text_secondary"]};font-size:0.85rem">'
             f'{scored} team members with enough history{delta_display}</span></div></div>',
             unsafe_allow_html=True,
         )
@@ -207,7 +215,7 @@ def render_team_trajectory(
             color = colors.get(cat, "#888")
             bar_w = int(pct * 160)
             st.markdown(
-                f'<div style="margin-bottom:6px;color:#6c757d;font-size:0.88rem">'
+                f'<div style="margin-bottom:6px;color:{THEME_MGR["text_secondary"]};font-size:0.88rem">'
                 f'{labels.get(cat, cat)}: {count} ({pct:.0%})'
                 f'<div style="height:6px;width:{bar_w}px;background:{color};'
                 f'border-radius:3px;margin-top:2px"></div>'
@@ -296,9 +304,9 @@ def render_manager_view(
 
     for section_fn in sections:
         st.markdown(
-            '<div style="background:#ffffff;border:1px solid #dee2e6;'
+            f'<div style="background:{THEME_MGR["card_bg"]};border:1px solid {THEME_MGR["border"]};'
             'border-radius:14px;padding:24px;margin-bottom:20px;'
-            'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+            'box-shadow:0 1px 4px rgba(0,0,0,0.2)">',
             unsafe_allow_html=True,
         )
         section_fn()

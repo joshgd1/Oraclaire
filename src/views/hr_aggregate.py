@@ -27,6 +27,14 @@ TIER_THEME = {
     "critical": "#ef4444",
 }
 
+THEME_HR = {
+    "card_bg": "#2a2a3e",
+    "border": "#3d3d5c",
+    "text": "#e5e7eb",
+    "text_secondary": "#9ca3af",
+    "bg": "#1e1e2e",
+}
+
 
 def _wrap_card():
     return st.container()
@@ -34,8 +42,8 @@ def _wrap_card():
 
 def render_header():
     st.markdown(
-        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        'letter-spacing:0.08em;color:#6c757d;margin:0">HR Admin</p>',
+        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:{THEME_HR["text_secondary"]};margin:0">HR Admin</p>',
         unsafe_allow_html=True,
     )
     st.title("Organisational Burnout Overview")
@@ -70,12 +78,12 @@ def render_tier_distribution(scores: list[dict]):
         icon = tier_icons.get(tier, "")
         with cols[idx]:
             st.markdown(
-                f'<div style="text-align:center;padding:20px 12px;background:#ffffff;'
-                f'border:1px solid #dee2e6;border-radius:12px;margin-bottom:12px;'
-                f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">'
+                f'<div style="text-align:center;padding:20px 12px;background:{THEME_HR["card_bg"]};'
+                f'border:1px solid {THEME_HR["border"]};border-radius:12px;margin-bottom:12px;'
+                f'box-shadow:0 1px 4px rgba(0,0,0,0.2)">'
                 f'<div style="font-size:1.8rem;margin-bottom:4px">{icon}</div>'
                 f'<div style="font-size:1.6rem;font-weight:800;color:{color}">{pct:.0%}</div>'
-                f'<div style="color:#6c757d;font-size:0.8rem;text-transform:uppercase;'
+                f'<div style="color:{THEME_HR["text_secondary"]};font-size:0.8rem;text-transform:uppercase;'
                 f'letter-spacing:0.04em">{tier}</div>'
                 f'<div style="color:#9ca3af;font-size:0.78rem;margin-top:4px">{count} people</div>'
                 f'</div>',
@@ -166,11 +174,11 @@ def render_exclusion_summary(exclusions: dict[str, int]):
         label = category.replace("_", " ").title()
         with cols[idx if idx < n else 0]:
             st.markdown(
-                f'<div style="padding:16px;text-align:center;background:#ffffff;'
-                f'border:1px solid #dee2e6;border-radius:10px;margin-bottom:8px;'
-                f'box-shadow:0 1px 3px rgba(0,0,0,0.06)">'
-                f'<div style="font-size:1.5rem;font-weight:800;color:#1a1a2e">{count}</div>'
-                f'<div style="color:#6c757d;font-size:0.78rem;text-transform:uppercase;'
+                f'<div style="padding:16px;text-align:center;background:{THEME_HR["card_bg"]};'
+                f'border:1px solid {THEME_HR["border"]};border-radius:10px;margin-bottom:8px;'
+                f'box-shadow:0 1px 3px rgba(0,0,0,0.2)">'
+                f'<div style="font-size:1.5rem;font-weight:800;color:{THEME_HR["text"]}">{count}</div>'
+                f'<div style="color:{THEME_HR["text_secondary"]};font-size:0.78rem;text-transform:uppercase;'
                 f'letter-spacing:0.04em">{label}</div></div>',
                 unsafe_allow_html=True,
             )
@@ -193,9 +201,9 @@ def render_hr_view(
         lambda: render_exclusion_summary(exclusions),
     ]:
         st.markdown(
-            '<div style="background:#ffffff;border:1px solid #dee2e6;'
+            f'<div style="background:{THEME_HR["card_bg"]};border:1px solid {THEME_HR["border"]};'
             'border-radius:14px;padding:24px;margin-bottom:20px;'
-            'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+            'box-shadow:0 1px 4px rgba(0,0,0,0.2)">',
             unsafe_allow_html=True,
         )
         section_fn()

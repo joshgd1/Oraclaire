@@ -21,11 +21,11 @@ THEME = {
     "moderate": "#f59e0b",
     "high": "#f97316",
     "critical": "#ef4444",
-    "text": "#1a1a2e",
-    "text_secondary": "#6c757d",
-    "card_bg": "#ffffff",
-    "border": "#dee2e6",
-    "bg": "#f8f9fa",
+    "text": "#e5e7eb",
+    "text_secondary": "#9ca3af",
+    "card_bg": "#2a2a3e",
+    "border": "#3d3d5c",
+    "bg": "#1e1e2e",
 }
 
 
@@ -36,8 +36,8 @@ def _card(title: str | None = None):
 
 def render_header():
     st.markdown(
-        '<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        'letter-spacing:0.08em;color:#6c757d;margin:0">Your Assessment</p>',
+        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0">Your Assessment</p>',
         unsafe_allow_html=True,
     )
     st.title("Burnout Risk Profile")
@@ -54,8 +54,8 @@ def render_tier_badge(tier: str, probability: float):
         f'border:1px solid {color}44;margin-bottom:20px">'
         f'<span style="font-size:1.8rem;font-weight:800;color:{color};'
         f'text-transform:uppercase;letter-spacing:0.05em">{tier}</span>'
-        f'<span style="color:#6c757d;font-size:0.95rem">Burnout score: '
-        f'<strong style="color:#1a1a2e">{probability:.1%}</strong></span>'
+        f'<span style="color:{THEME["text_secondary"]};font-size:0.95rem">Burnout score: '
+        f'<strong style="color:{THEME["text"]}">{probability:.1%}</strong></span>'
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -112,7 +112,7 @@ def render_shap_breakdown(shap_decomposition: list[dict]):
             st.markdown(
                 f"**{label}**  "
                 f'<span style="color:{color};font-weight:600">{arrow} {impact:.0%}</span>  '
-                f'<span style="color:#6c757d;font-size:0.85rem">{direction}</span>',
+                f'<span style="color:{THEME["text_secondary"]};font-size:0.85rem">{direction}</span>',
                 unsafe_allow_html=True,
             )
         with col_bar:
@@ -146,8 +146,8 @@ def render_resources(shap_decomposition: list[dict], tier: str):
 
     for resource in resources:
         st.markdown(
-            f'<div style="padding:10px 14px;background:#f8f9fa;border-radius:8px;'
-            f'border-left:3px solid #0d7377;margin-bottom:8px;color:#1a1a2e">'
+            f'<div style="padding:10px 14px;background:{THEME["bg"]};border-radius:8px;'
+            f'border-left:3px solid #0d7377;margin-bottom:8px;color:{THEME["text"]}">'
             f"{resource}</div>",
             unsafe_allow_html=True,
         )
@@ -262,7 +262,7 @@ def render_trajectory(trajectory_data: dict | None):
         f'<span style="font-size:1.8rem;font-weight:800;color:{color}">{icon}</span>'
         f'<div>'
         f'<strong style="color:{color};font-size:1rem">{label}</strong><br>'
-        f'<span style="color:#6c757d;font-size:0.85rem">'
+        f'<span style="color:{THEME["text_secondary"]};font-size:0.85rem">'
         f'Burnout score changed by <strong>{delta_abs:.1%}</strong> '
         f'(from {previous:.0%} to {current:.0%})'
         f'</span></div></div>',
@@ -324,9 +324,9 @@ def render_employee_view(
 
     # Wrap in a card
     st.markdown(
-        f'<div style="background:#ffffff;border:1px solid #dee2e6;'
+        f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
         f'border-radius:14px;padding:28px;margin-bottom:20px;'
-        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.2)">',
         unsafe_allow_html=True,
     )
     render_tier_badge(tier, probability)
@@ -337,9 +337,9 @@ def render_employee_view(
 
     # GDPR data section
     st.markdown(
-        f'<div style="background:#ffffff;border:1px solid #dee2e6;'
+        f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
         f'border-radius:14px;padding:24px;margin-bottom:20px;'
-        f'box-shadow:0 1px 4px rgba(0,0,0,0.06)">',
+        f'box-shadow:0 1px 4px rgba(0,0,0,0.2)">',
         unsafe_allow_html=True,
     )
     render_data_ownership(employee_id, token=auth_token)
