@@ -1,67 +1,57 @@
-# Contributing to Kailash COC Claude (Python)
+# Contributing to Oraclaire
 
-We welcome contributions to the Kailash COC template for Python projects. This document provides guidelines for contributing.
+We welcome contributions to Oraclaire. This document provides guidelines for contributing.
 
 ## About This Repository
 
-This is a **COC (Cognitive Orchestration for Codegen) template** for Claude Code. It provides agents, skills, rules, commands, and hooks that Python projects inherit through the `.claude/` directory.
-
-This project is maintained by the [Terrene Foundation](https://terrene.foundation) and licensed under Apache 2.0.
+Oraclaire is a workplace burnout risk assessment tool — it helps employees, managers, and HR teams identify burnout risk early using a Random Forest classifier with SHAP-based explainability.
 
 ## Getting Started
 
-1. Fork the repository on GitHub
-2. Clone your fork locally
-3. Create a new branch for your changes:
-   ```bash
-   git checkout -b feat/your-feature
-   ```
+```bash
+# Install dependencies
+uv sync
+
+# Train the model (first run only)
+uv run python -m src.model.train
+
+# Start the app
+uv run streamlit run src/app.py
+```
+
+Open `http://localhost:8501` to use the app.
 
 ## What to Contribute
 
-- **Agents**: New or improved agent definitions in `.claude/agents/`
-- **Skills**: Knowledge documents in `.claude/skills/`
-- **Rules**: Development rules in `.claude/rules/`
-- **Commands**: Slash commands in `.claude/commands/`
-- **Hooks**: Automation hooks in `.claude/hooks/`
+- **Bug fixes**: Check existing issues before opening new ones
+- **Model improvements**: Retraining, feature engineering, threshold tuning
+- **UX screens**: New views or modifications to employee/manager/HR flows
+- **Integrations**: HRIS connectors (BambooHR, Workday)
 
 ## Guidelines
 
-### Template Independence
+### Code Standards
 
-COC templates are framework-agnostic tools for Claude Code. Contributions must not:
-
-- Reference or depend on any proprietary codebase
-- Include paths or patterns specific to a single project
-- Hardcode API keys, secrets, or credentials
-
-### Quality Standards
-
-- Agent and skill files should be well-structured Markdown
-- Rules should include clear scope, rationale, and examples
-- Hook scripts should be tested and include error handling
+- All threshold values live in `src/config.py` — no hardcoded magic numbers
+- The 5-question check-in is defined in `src/views/employee_ux.py` (`ASSESSMENT_QUESTIONS`) — questions can be changed without touching model code
+- Demo mode runs entirely locally with no backend
 
 ### Commit Messages
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+Follow [Conventional Commits](https://www.conventionalcommits.org):
 
 ```
-feat(agents): add data-migration specialist
-fix(rules): correct testing tier definitions
-docs(skills): update workflow quickstart guide
+feat(model): improve risk tier thresholds
+fix(ux): correct blank result screen on Manager view
+docs: update deployment checklist
 ```
 
 ## Pull Request Process
 
-1. Ensure your changes do not break the COC structure validation (CI will check)
-2. Update documentation if you add new agents, skills, or rules
+1. Ensure tests pass: `uv run pytest`
+2. Verify Streamlit runs: `uv run streamlit run src/app.py`
 3. Request review from maintainers
-4. Squash or rebase to clean commit history before merge
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE), the same license as the rest of the project.
-
-## Questions?
-
-Open an issue on GitHub or reach out at [info@terrene.foundation](mailto:info@terrene.foundation).
+By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
