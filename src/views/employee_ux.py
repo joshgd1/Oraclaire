@@ -285,7 +285,7 @@ def screen_checkin(on_submit) -> int | None:
         raw_score = sum(answers.values()) / len(answers)
         pulse = max(1, min(5, round(raw_score)))
         on_submit(pulse)
-        return
+        st.rerun()  # immediately show result screen
 
     # Progress header
     col1, col2 = st.columns([1, 3])
