@@ -837,4 +837,10 @@ def render_employee_ux(
             for key in ["ux_screen", "ux_pulse", "ux_q_num", "ux_answers", "_ux_checkin_done"]:
                 st.session_state.pop(key, None)
             st.rerun()
+        st.markdown(
+            '<p style="text-align:center;margin-top:8px">'
+            '<a href="/?signout=1" style="color:#9ca3af;font-size:0.8rem;text-decoration:none">'
+            '🚪 Sign out</a></p>',
+            unsafe_allow_html=True,
+        )
         return
