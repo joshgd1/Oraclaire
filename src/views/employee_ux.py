@@ -815,8 +815,7 @@ def render_employee_ux(
 
     # ── Screen 1: Weekly check-in ────────────────────────────────────────
     if screen == "checkin":
-        def handle_pulse(value: int):
-            st.session_state.ux_pulse = value
+        def handle_pulse():
             st.session_state.ux_screen = "dashboard"
 
         screen_checkin(handle_pulse)
