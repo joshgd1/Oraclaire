@@ -275,3 +275,103 @@ If Brier > 0.15 at retrain: Platt scaling applied before threshold selection.
 - **D2:** Buyer's motivation (HR Director, reduced turnover) structurally misaligned with user's need (employee, privacy/agency). Product must serve both or participation collapses.
 
 Full lessons: `workspaces/Oraclaire/playbook/appendix-a-lessons.md`
+
+---
+
+## 12. Streamlit UI Implementation (Session 2026-05-17)
+
+### Login Form Pattern
+
+Streamlit forms require `st.form()` + `st.form_submit_button()` — NOT native HTML forms inside `st.html()`.
+
+**Why:** `st.html()` renders raw HTML but **strips `name` attributes** from form elements. Native HTML `<form>` submission bypasses Streamlit's widget state protocol, so `st.selectbox()` values are not captured. The `st.form()` context captures all widget values via Streamlit's message protocol and submits them on `st.form_submit_button()`.
+
+```python
+# DO — st.form() captures widget state correctly
+with st.form("login", clear_on_submit=True):
+    emp_id = st.text_input("Employee ID", placeholder="e.g. 1")
+    role = st.selectbox("Role", options=["employee", "manager", "hr_admin"])
+    submitted = st.form_submit_button("Sign in", type="primary")
+    if submitted and emp_id:
+        qp = st.query_params
+        qp["emp_id"] = emp_id.strip()
+        qp["role"] = role
+        st.rerun()  # Force fresh render with new state
+
+# DO NOT — native HTML form inside st.html() loses widget state
+st.html("""
+<form method="POST">
+  <select name="role">...</select>  <!-- name attribute STRIPPED by Streamlit -->
+  <button type="submit">Sign in</button>
+</form>
+""")
+```
+
+### Login Handler: Return After Rerun
+
+The login handler in `main()` MUST `return` after `st.rerun()` on the same render cycle. Without `return`, execution falls through to the next page function (`page_employee()`) on the same render, before the rerun takes effect.
+
+```python
+# src/app.py ~line 1100
+if submitted and emp_id:
+    qp = st.query_params
+    qp["emp_id"] = emp_id.strip()
+    qp["role"] = role
+    st.rerun()
+    return  # CRITICAL: prevent fallthrough to page_employee() on same render
+```
+
+### Role Routing (Verified Working)
+
+| Role           | Dashboard                           |
+| -------------- | ----------------------------------- |
+| `manager`      | `page_manager()` — team dashboard   |
+| `hr_admin`     | `page_hr()` — org overview          |
+| `system_admin` | `page_hr()` — org overview          |
+| `employee`     | `page_employee()` — weekly check-in |
+
+Routing logic (`src/app.py` ~line 1106):
+
+```python
+auth_role = st.session_state.get("auth_role")
+if auth_role == "manager":
+    page_manager()
+elif auth_role == "hr_admin":
+    page_hr()
+elif auth_role == "system_admin":
+    page_hr()
+else:
+    page_employee()
+```
+
+### CSS Stacking Contexts
+
+`st.html()` panels with `position: fixed` create stacking contexts above Streamlit's native widget layers. Add `pointer-events: none` to decorative HTML panels that overlay the form area.
+
+```python
+st.html("""
+<style>
+div.login-left {
+    position: fixed; top: 0; left: 0; width: 40vw; height: 100vh;
+    /* ... */
+    pointer-events: none; /* Prevent intercepting form clicks */
+    z-index: 0;
+}
+</style>
+<div class="login-left">...</div>
+""")
+```
+
+### Split-Screen Login Layout
+
+Use CSS on `[data-testid="stMainBlockContainer"]` to position the `st.form()` panel beside a fixed `st.html()` branding panel:
+
+```python
+st.markdown("""
+<style>
+[data-testid="stMainBlockContainer"] {
+    margin-left: 40vw !important; width: 60vw !important;
+}
+</style>
+""", unsafe_allow_html=True)
+```
