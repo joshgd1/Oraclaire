@@ -1,20 +1,21 @@
 """
-Employee-facing UX — 7-screen flow.
+Employee-facing UX — dashboard-first flow.
 
-Screen 0: What to expect (intro, what we'll ask, privacy promise)
-Screen 1: Weekly check-in (5 questions mapping to burnout drivers)
-Screen 2: Your result (privacy notice, plain label, one action)
-Screen 3: Wellbeing dimensions (radar chart, all 8 axes)
-Screen 4: What is affecting this (three plain sentences)
-Screen 5: What might help (matched resources, max 3)
-Screen 6: Your trend (simple line, no numbers)
+After completing the check-in, the employee sees a single dashboard with four cards:
+  Card 1 — How you are doing        (tier badge + description, pastel background)
+  Card 2 — What is affecting this  (top 3 factors, expandable)
+  Card 3 — Your trend this week    (sparkline + sentence, expandable)
+  Card 4 — What might help         (2-3 resources matched to top factor)
 
-Mobile-first. No jargon. Privacy notice visible on every result screen.
-Target audiences: employees using the app, business managers approving launch,
-fellow developers inheriting the codebase.
+A privacy banner sits at the very top of the dashboard, always visible.
+
+Mobile-first. No jargon. Privacy notice visible at all times.
 """
 
-from typing import Literal
+import json
+import os
+from datetime import datetime, timedelta
+from pathlib import Path
 
 import plotly.graph_objects as go
 import streamlit as st
@@ -36,6 +37,14 @@ THEME = {
     "bg": "#1e1e2e",
 }
 
+# Pastel backgrounds per tier (soft, no harsh colours)
+PASTEL_BG = {
+    "low": "#dcfce7",      # soft green
+    "moderate": "#fef9c3", # soft amber
+    "high": "#ffedd5",     # soft orange
+    "critical": "#fee2e2", # soft red
+}
+
 # ── Plain-language label map ────────────────────────────────────────────────
 
 TIER_LABELS = {
@@ -52,7 +61,6 @@ TIER_DESCRIPTIONS = {
     "critical": "Your responses suggest things are really tough right now. Please consider reaching out.",
 }
 
-# Plain-language signal labels shown alongside the tier badge (no numbers)
 SIGNAL_LABELS = {
     "low": "Signs of stability",
     "moderate": "Some strain showing",
@@ -63,37 +71,19 @@ SIGNAL_LABELS = {
 # ── Privacy notice ──────────────────────────────────────────────────────────
 
 PRIVACY_NOTICE = (
-    "Only you can see this. Your manager and HR see team averages only."
+    "🔒 Only you can see this. Your manager and HR see team averages only."
 )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
-def _privacy_card():
+def _privacy_banner():
+    """Full-width banner at the top of the dashboard — always visible, not dismissible."""
     st.markdown(
-        f'<div style="background:#0d737720;border:1px solid #0d737740;'
-        f'border-radius:10px;padding:12px 16px;margin-bottom:20px">'
-        f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;font-weight:500">'
-        f"🔒 {PRIVACY_NOTICE}</p></div>",
-        unsafe_allow_html=True,
-    )
-
-
-def _render_tier_badge(tier: str):
-    """Colored badge showing tier name + plain-language signal label."""
-    color = THEME.get(tier.lower(), "#888")
-    signal = SIGNAL_LABELS.get(tier.lower(), "")
-    tier_display = tier.upper()
-
-    st.markdown(
-        f'<div style="display:inline-flex;align-items:center;gap:16px;'
-        f'padding:16px 24px;border-radius:12px;background:{color}18;'
-        f'border:1px solid {color}44;margin-bottom:20px">'
-        f'<span style="font-size:1.6rem;font-weight:800;color:{color};'
-        f'text-transform:uppercase;letter-spacing:0.05em">{tier_display}</span>'
-        f'<span style="color:{THEME["text_secondary"]};font-size:0.95rem">'
-        f'{signal}</span>'
-        f"</div>",
+        f'<div style="background:#f0fdfa;border:1px solid #99f6e4;'
+        'border-radius:10px;padding:12px 20px;margin-bottom:20px;width:100%">'
+        f'<p style="margin:0;color:#065f46;font-size:0.95rem;font-weight:500">'
+        f"{PRIVACY_NOTICE}</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -101,28 +91,88 @@ def _render_tier_badge(tier: str):
 def _section_title(text: str):
     st.markdown(
         f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 12px 0">'
+        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 8px 0">'
         f"{text}</p>",
         unsafe_allow_html=True,
     )
 
 
-def _card(content_fn, *args, **kwargs):
-    with st.container():
+def _card_wrap(label: str, contents_fn, pastel_bg: str = None):
+    """Render a labelled card with optional pastel background."""
+    bg = pastel_bg or THEME["card_bg"]
+    text_color = "#065f46" if pastel_bg else THEME["text"]
+    border_color = "#bbf7d0" if pastel_bg else THEME["border"]
+    st.markdown(
+        f'<div style="background:{bg};border:1px solid {border_color};'
+        f'border-radius:14px;padding:20px 22px;margin-bottom:16px">',
+        unsafe_allow_html=True,
+    )
+    if label:
         st.markdown(
-            f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
-            f'border-radius:14px;padding:24px;margin-bottom:16px;'
-            f'box-shadow:0 1px 4px rgba(0,0,0,0.2)">',
+            f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 10px 0">'
+            f"{label}</p>",
             unsafe_allow_html=True,
         )
-        content_fn(*args, **kwargs)
-        st.markdown("</div>", unsafe_allow_html=True)
+    contents_fn()
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_tier_badge(tier: str):
+    """Colored badge showing tier name + plain-language signal label."""
+    color = THEME.get(tier.lower(), "#888")
+    signal = SIGNAL_LABELS.get(tier.lower(), "")
+    st.markdown(
+        f'<span style="display:inline-flex;align-items:center;gap:12px;'
+        f'padding:10px 18px;border-radius:10px;background:{color}18;'
+        f'border:1px solid {color}33;font-size:0.85rem;font-weight:700;'
+        f'text-transform:uppercase;letter-spacing:0.05em;color:{color}">'
+        f"{tier.upper()}</span>"
+        f'&nbsp;<span style="color:{THEME["text_secondary"]};font-size:0.9rem;font-weight:400">'
+        f"{signal}</span>",
+        unsafe_allow_html=True,
+    )
+
+
+# ── Pulse history ──────────────────────────────────────────────────────────
+
+def _load_pulse_history(employee_id: str) -> list[dict]:
+    """Load up to 5 weeks of pulse history for an employee.
+
+    Returns list of dicts: [{week_label: str, pulse: int}, ...]
+    Ordered oldest → newest.
+    """
+    pulse_path = Path("data/audit/pulse.jsonl")
+    if not pulse_path.exists():
+        return []
+
+    history = []
+    try:
+        with open(pulse_path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if str(record.get("employee_id", "")) != str(employee_id):
+                    continue
+                history.append({
+                    "week_label": record.get("week_label", "Week"),
+                    "pulse": record.get("pulse"),
+                    "date": record.get("date", ""),
+                })
+    except (IOError, OSError):
+        return []
+
+    # Sort oldest first; keep last 5
+    history.sort(key=lambda r: r.get("date", ""))
+    return history[-5:]
 
 
 # ── Assessment questions ─────────────────────────────────────────────────────
-# Questions map to burnout drivers. Labels are plain-language;
-# internal names map to model features.
-# To change a question, edit only the dictionaries below.
 
 ASSESSMENT_QUESTIONS = [
     {
@@ -193,23 +243,11 @@ ASSESSMENT_QUESTIONS = [
 ]
 
 
-def _privacy_badge():
-    """Shown at the top of every screen."""
-    st.markdown(
-        '<div style="background:#f0fdfa;border:1px solid #99f6e4;'
-        'border-radius:10px;padding:10px 16px;margin-bottom:20px">'
-        '<p style="margin:0;color:#065f46;font-size:0.85rem;font-weight:500">'
-        '🔒 Your answers are private. Only team-level trends are visible to managers and HR.</p></div>',
-        unsafe_allow_html=True,
-    )
-
-
 # ── Screen 0: What to expect ──────────────────────────────────────────────
 
 def screen_intro() -> None:
     """Intro screen — explains what we'll ask and why."""
 
-    # Header
     st.markdown(
         f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
         f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
@@ -218,10 +256,8 @@ def screen_intro() -> None:
     )
     st.title("A quick check on how you're doing")
 
-    # Privacy badge — always visible at top
-    _privacy_badge()
+    _privacy_banner()
 
-    # Time estimate callout — prominent but clean
     st.markdown(
         f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
         f'border-radius:12px;padding:16px 20px;margin-bottom:24px;'
@@ -236,7 +272,6 @@ def screen_intro() -> None:
         unsafe_allow_html=True,
     )
 
-    # What we measure — icon cards in a clean grid
     _section_title("What we're checking")
     dimensions = [
         ("⚡", "Workload", "How busy you've been and whether it's sustainable"),
@@ -245,8 +280,6 @@ def screen_intro() -> None:
         ("📈", "Pressure", "Any signs you were being stretched too far"),
         ("🤝", "Support", "Whether you had the resources and backing you needed"),
     ]
-
-    # Render as a 2-column grid of cards
     cols = st.columns(2)
     for i, (icon, dim, desc) in enumerate(dimensions):
         with cols[i % 2]:
@@ -264,7 +297,6 @@ def screen_intro() -> None:
                 unsafe_allow_html=True,
             )
 
-    # Divider — the Start button lives in render_employee_ux
     st.markdown("---")
 
 
@@ -276,18 +308,15 @@ def screen_checkin(on_submit) -> int | None:
     total = len(questions)
     q_num = st.session_state.get("ux_q_num", 1)
 
-    # Privacy badge at top
-    _privacy_badge()
+    _privacy_banner()
 
     if q_num > total:
-        # All questions answered — compute aggregate pulse and advance
         answers = st.session_state.get("ux_answers", {})
         raw_score = sum(answers.values()) / len(answers)
         pulse = max(1, min(5, round(raw_score)))
         on_submit(pulse)
-        st.rerun()  # immediately show result screen
+        st.rerun()
 
-    # Progress header
     col1, col2 = st.columns([1, 3])
     with col1:
         st.markdown(
@@ -297,15 +326,10 @@ def screen_checkin(on_submit) -> int | None:
             unsafe_allow_html=True,
         )
     with col2:
-        # Progress bar
-        progress = q_num / total
-        st.progress(progress, text="")
+        st.progress(q_num / total, text="")
 
-    # Current question
     q = questions[q_num - 1]
     st.title(q["question"])
-
-    # Subtext with better styling
     st.markdown(
         f'<p style="color:{THEME["text_secondary"]};font-size:0.95rem;'
         f'margin-bottom:28px;line-height:1.5">'
@@ -313,25 +337,21 @@ def screen_checkin(on_submit) -> int | None:
         unsafe_allow_html=True,
     )
 
-    # Record answer and advance
     answer_key = f"q_{q['id']}"
     selected = st.session_state.get(answer_key)
 
-    # Show option buttons with intensity indicator
-    # Color gradient: low intensity (green) → high intensity (red)
     intensity_colors = [
-        ("#10b981", "#059669"),  # 1 - green
-        ("#34d399", "#10b981"),  # 2 - light green
-        ("#fbbf24", "#f59e0b"), # 3 - yellow/amber
-        ("#fb923c", "#f97316"),  # 4 - orange
-        ("#f87171", "#ef4444"),  # 5 - red
+        ("#10b981", "#059669"),
+        ("#34d399", "#10b981"),
+        ("#fbbf24", "#f59e0b"),
+        ("#fb923c", "#f97316"),
+        ("#f87171", "#ef4444"),
     ]
 
     for idx, (label, value) in enumerate(q["options"]):
-        is_selected = (selected == value)
-        bg_color, border_color = intensity_colors[idx]
+        is_selected = selected == value
+        bg_color, _ = intensity_colors[idx]
 
-        # Selected state card
         if is_selected:
             st.markdown(
                 f'<div style="background:{bg_color}18;border:2px solid {bg_color};'
@@ -339,12 +359,10 @@ def screen_checkin(on_submit) -> int | None:
                 f'display:flex;align-items:center;gap:12px">'
                 f'<span style="color:{bg_color};font-size:1.1rem">✓</span>'
                 f'<span style="color:{THEME["text"]};font-size:0.95rem;font-weight:500">'
-                f'{label}</span>'
-                f'</div>',
+                f'{label}</span></div>',
                 unsafe_allow_html=True,
             )
         else:
-            # Normal button-like option
             if st.button(
                 f"{label}",
                 key=f"{answer_key}_{value}",
@@ -357,9 +375,8 @@ def screen_checkin(on_submit) -> int | None:
                 st.session_state.ux_q_num = q_num + 1
                 st.rerun()
 
-    # Back button (not on first question)
     if q_num > 1:
-        st.markdown("<br>", unsafe_allow_html=True)  # spacing
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.button("← Back", key="checkin_back", use_container_width=True):
             st.session_state.ux_q_num = q_num - 1
             st.rerun()
@@ -367,109 +384,9 @@ def screen_checkin(on_submit) -> int | None:
     return None
 
 
-# ── Screen 2: Your result ──────────────────────────────────────────────────
-
-def screen_result(tier: str, probability: float | None, on_see_factors) -> bool:
-    """
-    Show the result card with tier badge + plain label.
-    Returns True if user clicked 'See what's behind this'.
-    """
-    label = TIER_LABELS.get(tier, "Here's your result")
-    description = TIER_DESCRIPTIONS.get(tier, "")
-    color = THEME.get(tier.lower(), "#888")
-
-    st.markdown(
-        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-        f"Your result</p>",
-        unsafe_allow_html=True,
-    )
-
-    _render_tier_badge(tier)
-    st.title(label)
-
-    _privacy_card()
-
-    st.markdown(
-        f'<div style="background:{color}18;border:1px solid {color}44;'
-        f'border-radius:14px;padding:24px;margin-bottom:20px;text-align:center">'
-        f'<p style="color:{THEME["text"]};font-size:1.05rem;margin:0;line-height:1.6">'
-        f"{description}</p></div>",
-        unsafe_allow_html=True,
-    )
-
-    return st.button(
-        "See what's affecting this",
-        key="see_factors",
-        use_container_width=True,
-    )
-
-
-# ── Screen 3: What is affecting this ──────────────────────────────────────
-
-def screen_factors(shap_decomposition: list[dict], on_see_help) -> bool:
-    """
-    Show top 3 plain-sentence factors.
-    Returns True if user clicked 'See what might help'.
-    """
-    st.markdown(
-        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-        f"What is affecting this</p>",
-        unsafe_allow_html=True,
-    )
-    st.title("What is driving this")
-
-    _privacy_card()
-
-    _section_title("The biggest factors right now")
-
-    factors = [
-        item for item in (shap_decomposition or [])
-        if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
-    ][:3]
-
-    if not factors:
-        st.info("Not enough data yet to show what is affecting this.")
-        return False
-
-    for i, item in enumerate(factors, 1):
-        feature = item.get("feature", "")
-        label = FEATURE_LABELS.get(feature, item.get("label", ""))
-        direction = item.get("direction", "")
-
-        # Build a plain sentence
-        if direction == "increases":
-            sentence = _build_factor_sentence(label, increases=True)
-        else:
-            sentence = _build_factor_sentence(label, increases=False)
-
-        color = "#ef4444" if direction == "increases" else "#10b981"
-        icon = "↑" if direction == "increases" else "↓"
-
-        txt = THEME["text"]
-        card_bg = THEME["card_bg"]
-        border = THEME["border"]
-        st.markdown(
-            f'<div style="display:flex;align-items:flex-start;gap:12px;'
-            f'padding:16px;background:{card_bg};border:1px solid {border};'
-            f'border-radius:10px;margin-bottom:10px">'
-            f'<span style="font-size:1.1rem;color:{color};flex-shrink:0;margin-top:2px">{icon}</span>'
-            '<p style="margin:0;color:' + txt + ';font-size:1rem;line-height:1.5">'
-            + sentence + "</p></div>",
-            unsafe_allow_html=True,
-        )
-
-    return st.button(
-        "See what might help",
-        key="see_help",
-        use_container_width=True,
-    )
-
+# ── Dashboard ──────────────────────────────────────────────────────────────
 
 def _build_factor_sentence(label: str, increases: bool) -> str:
-    """Convert a feature label into a plain English sentence."""
-    # Map feature keys to plain sentence templates
     sentences = {
         "tenure_days": (
             "The length of time you've been in this role is a factor right now."
@@ -505,105 +422,24 @@ def _build_factor_sentence(label: str, increases: bool) -> str:
     return sentences.get(label, f"{label} is a factor in your result.")
 
 
-# ── Screen 4: What might help ──────────────────────────────────────────────
-
-def screen_resources(top_feature: str, tier: str, on_done) -> bool:
-    """
-    Show up to 3 resources matched to the top SHAP factor.
-    Returns True if user clicked 'Done for now'.
-    """
-    st.markdown(
-        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-        f"What might help</p>",
-        unsafe_allow_html=True,
-    )
-    st.title("Things that might help")
-
-    _privacy_card()
-
-    resources = RESOURCES.get(top_feature, [])
-    if not resources:
-        st.info(
-            "No specific suggestions for this situation yet. "
-            "Speaking with your manager or HR is always a good step."
-        )
-        return st.button("Done for now", key="done_no_resources", use_container_width=True)
-
-    # Show top 3
-    for resource in resources[:3]:
-        st.markdown(
-            f'<div style="padding:16px 20px;background:{THEME["card_bg"]};'
-            f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
-            f'border-radius:10px;margin-bottom:12px">'
-            f'<p style="margin:0 0 4px 0;color:{THEME["text"]};font-weight:600;font-size:1rem">'
-            f"{resource}</p></div>",
-            unsafe_allow_html=True,
-        )
-
-    return st.button("Done for now", key="done", use_container_width=True)
-
-
-# ── Screen 5: Wellbeing Dimensions Radar ───────────────────────────────────
-
 def _compute_radar_from_features(features: dict, seniority_tier: int) -> dict:
     """Derive 0-100 risk scores for each wellbeing dimension from feature values."""
 
     def _scale(value: float, lo: float, hi: float, invert: bool = False) -> float:
-        """Normalise value to 0-100, inverting if invert=True (lower raw = higher risk)."""
         normalized = (value - lo) / (hi - lo) if hi != lo else 0.5
         normalized = max(0.0, min(1.0, normalized))
         return round((1 - normalized if invert else normalized) * 100, 1)
 
     return {
-        "Energy": _scale(
-            features.get("mental_fatigue_score", 5.0), 1.0, 10.0, invert=True
+        "Workload": _scale(features.get("resource_allocation", 5.0), 0.0, 10.0, invert=False),
+        "Energy levels": _scale(features.get("mental_fatigue_score", 5.0), 1.0, 10.0, invert=True),
+        "How long in this role": _scale(features.get("tenure_days", 547.0), 0.0, 3650.0, invert=False),
+        "Work setup": (
+            100.0 if features.get("wfh_setup", 1.0) == 0.0 else 30.0
         ),
-        "Workload": _scale(
-            features.get("resource_allocation", 5.0), 0.0, 10.0, invert=False
-        ),
-        "Tenure Pressure": _scale(
-            features.get("tenure_days", 547), 0.0, 3650.0, invert=False
-        ),
-        "Work Arrangement": (
-            100.0
-            if features.get("wfh_setup", 1.0) == 0.0
-            else 30.0
-        ),
-        "Role Demands": _scale(
-            features.get("seniority_tier", 0.0), 0.0, 5.0, invert=False
-        ),
-        "Company Context": 50.0,  # not modifiable; neutral
-        "Fatigue Trend": _scale(
-            features.get("tenure_fatigue", 5.0), 0.0, 10.0, invert=True
-        ),
-        "Workload Trend": _scale(
-            features.get("tenure_workload", 5.0), 0.0, 10.0, invert=False
-        ),
+        "Role level": _scale(features.get("seniority_tier", 0.0), 0.0, 5.0, invert=False),
+        "Organisation type": 50.0,
     }
-
-
-def _compute_radar_from_shap(shap_decomposition: list[dict]) -> dict:
-    """Derive 0-100 risk scores from SHAP impact values.
-
-    Uses normalised absolute SHAP impact so the largest-contributing
-    dimension always scores 100; others scale proportionally.
-    """
-    feat_map = {item["feature"]: item["impact_value"] for item in shap_decomposition}
-
-    impacts = {
-        "Energy": abs(feat_map.get("mental_fatigue_score", 0)),
-        "Workload": abs(feat_map.get("resource_allocation", 0)),
-        "Tenure Pressure": abs(feat_map.get("tenure_days", 0)),
-        "Work Arrangement": abs(feat_map.get("wfh_setup", 0)),
-        "Role Demands": abs(feat_map.get("seniority_tier", 0)),
-        "Company Context": abs(feat_map.get("company_type", 0)),
-        "Fatigue Trend": abs(feat_map.get("tenure_fatigue", 0)),
-        "Workload Trend": abs(feat_map.get("tenure_workload", 0)),
-    }
-
-    max_impact = max(impacts.values()) or 1.0
-    return {dim: round((impact / max_impact) * 100, 1) for dim, impact in impacts.items()}
 
 
 def _tier_color(tier: str) -> str:
@@ -612,49 +448,32 @@ def _tier_color(tier: str) -> str:
     )
 
 
-def _tier_color_rgba(tier: str, alpha: float = 0.18) -> str:
-    """Return rgba() string for a tier hex color with configurable alpha."""
-    hex_color = _tier_color(tier)
-    r = int(hex_color[1:3], 16)
-    g = int(hex_color[3:5], 16)
-    b = int(hex_color[5:7], 16)
-    return f"rgba({r},{g},{b},{alpha})"
+def _render_dimensions_chart(radar_values: dict, tier: str):
+    """Always renders a radar chart — uses radar_values or placeholder."""
+    if not radar_values:
+        radar_values = {
+            "Workload": 50, "Energy levels": 50,
+            "How long in this role": 50, "Work setup": 50,
+            "Role level": 50, "Organisation type": 50,
+        }
 
-
-def screen_radar(
-    radar_values: dict,
-    tier: str,
-    on_see_factors,
-):
-    """
-    Render the wellbeing dimensions radar chart.
-    Returns True if user clicked 'See what's affecting this'.
-    """
-    st.markdown(
-        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-        f"Wellbeing dimensions</p>",
-        unsafe_allow_html=True,
-    )
-    st.title("Your wellbeing at a glance")
-
-    _privacy_card()
-
-    _section_title("How you're doing across each dimension")
-
-    # ── Build Plotly radar ──────────────────────────────────────────────
     dimensions = list(radar_values.keys())
     values = list(radar_values.values())
-
     tier_color = _tier_color(tier)
+
+    def _rgba(hex_color: str, alpha: float = 0.18) -> str:
+        r = int(hex_color[1:3], 16)
+        g = int(hex_color[3:5], 16)
+        b = int(hex_color[5:7], 16)
+        return f"rgba({r},{g},{b},{alpha})"
 
     fig = go.Figure(
         data=[
             go.Scatterpolar(
-                r=values + [values[0]],  # close the polygon
+                r=values + [values[0]],
                 theta=dimensions + [dimensions[0]],
                 fill="toself",
-                fillcolor=_tier_color_rgba(tier),
+                fillcolor=_rgba(tier_color, 0.2),
                 line_color=tier_color,
                 line_width=2.5,
                 marker=dict(size=6, color=tier_color),
@@ -662,14 +481,13 @@ def screen_radar(
             )
         ]
     )
-
     fig.update_layout(
         polar=dict(
             bgcolor="rgba(0,0,0,0)",
             radialaxis=dict(
                 range=[0, 100],
-                tickvals=[0, 25, 50, 75, 100],
-                ticktext=["0", "25", "50", "75", "100"],
+                tickvals=[0, 50, 100],
+                ticktext=["0", "50", "100"],
                 tickfont=dict(color="#9ca3af", size=10),
                 tickcolor="#3d3d5c",
                 linecolor="#3d3d5c",
@@ -678,7 +496,7 @@ def screen_radar(
                 side="clockwise",
             ),
             angularaxis=dict(
-                tickfont=dict(color="#e5e7eb", size=11, family="Inter, sans-serif"),
+                tickfont=dict(color="#e5e7eb", size=10, family="Inter, sans-serif"),
                 tickcolor="#3d3d5c",
                 linecolor="#3d3d5c",
                 gridcolor="#3d3d5c",
@@ -690,98 +508,190 @@ def screen_radar(
         plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         margin=dict(l=20, r=20, t=20, b=20),
-        height=420,
+        height=300,
         width=None,
     )
-
     st.plotly_chart(fig, use_container_width=True)
 
-    # Tier context label under the chart
-    st.markdown(
-        f'<p style="text-align:center;color:{THEME["text_secondary"]};'
-        f'font-size:0.8rem;margin-top:-8px;margin-bottom:20px">'
-        f"0 = lower risk &nbsp;·&nbsp; 100 = higher risk &nbsp;·&nbsp; "
-        f'Your overall level: <strong style="color:{tier_color}">'
-        f'{tier.upper()}</strong></p>',
-        unsafe_allow_html=True,
-    )
 
-    col1, col2 = st.columns([1, 1])
-    with col2:
-        see_factors = st.button(
-            "See what's affecting this →",
-            key="see_factors_from_radar",
-            use_container_width=True,
-        )
-    with col1:
-        if st.button("← Back", key="back_from_radar", use_container_width=True):
-            st.session_state.ux_screen = "result"
-            st.rerun()
-
-    return see_factors
-
-
-# ── Screen 6: Your trend ──────────────────────────────────────────────────
-
-def screen_trend(trajectory_data: dict | None):
-    """
-    Simple trend — no numbers, no axes labels.
-    """
-    st.markdown(
-        f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-        f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-        f"Your trend</p>",
-        unsafe_allow_html=True,
-    )
-    st.title("How you've been doing")
-
-    _privacy_card()
-
-    if not trajectory_data:
-        st.info(
-            "Complete a couple more check-ins to see your trend over time."
+def _render_trend_chart(history: list[dict]):
+    """Render trend sparkline from pulse history, or a placeholder if empty."""
+    if not history:
+        st.markdown(
+            '<div style="background:#f0fdfa;border:1px dashed #99f6e4;'
+            'border-radius:10px;padding:20px;text-align:center">'
+            '<p style="margin:0;color:#065f46;font-size:0.9rem;line-height:1.5">'
+            "Your trend will appear here after a few check-ins. Come back next week.</p></div>",
+            unsafe_allow_html=True,
         )
         return
 
-    trajectory = trajectory_data.get("trajectory", "no_trajectory")
-
-    if trajectory == "no_trajectory":
-        st.info(
-            "Complete a couple more check-ins to see your trend over time."
-        )
-        return
-
-    # Build a plain-sentence description
-    trend_sentences = {
-        "improved": "You're doing better than you were. Keep it up.",
-        "worsened": "Things have been harder lately. It might be worth talking to someone.",
-        "held": "You're in a similar place to where you've been.",
+    # Word labels for y-axis
+    PULSE_WORDS = {
+        1: "Really rough",
+        2: "Tough",
+        3: "Okay",
+        4: "Pretty good",
+        5: "Great",
     }
-    sentence = trend_sentences.get(trajectory, "")
 
-    # Show a simple directional card
-    icons = {"improved": "↗", "worsened": "↘", "held": "→"}
-    colors = {"improved": "#10b981", "worsened": "#ef4444", "held": "#f59e0b"}
-    icon = icons.get(trajectory, "·")
-    color = colors.get(trajectory, "#888")
+    # Build chart data: week labels → word labels, no numbers
+    chart_data = {}
+    for i, entry in enumerate(history):
+        label = entry.get("week_label", f"Week {i+1}")
+        pulse = entry.get("pulse")
+        if pulse is None:
+            continue
+        word = PULSE_WORDS.get(pulse, str(pulse))
+        chart_data[label] = word
 
-    st.markdown(
-        f'<div style="text-align:center;padding:32px 24px;background:{THEME["card_bg"]};'
-        f'border:1px solid {THEME["border"]};border-radius:14px;margin-bottom:16px">'
-        f'<div style="font-size:3rem;margin-bottom:8px;color:{color}">{icon}</div>'
-        f'<p style="margin:0;color:{THEME["text"]};font-size:1.1rem;font-weight:500">'
-        f"{sentence}</p></div>",
-        unsafe_allow_html=True,
-    )
+    if chart_data:
+        st.line_chart(chart_data, height=140)
 
-    # Simple line chart — hide axes via CSS
-    cycles = trajectory_data.get("history", [])
-    if cycles:
-        chart_data = {c.get("label", f"Check-in {i+1}"): c.get("value", 0) for i, c in enumerate(cycles)}
-        st.line_chart(chart_data, height=180)
-        st.caption(
-            "This shows the direction of how you've been feeling — not the exact numbers."
+    # Direction sentence
+    if len(history) >= 2:
+        first = history[0].get("pulse", 3)
+        last = history[-1].get("pulse", 3)
+        delta = last - first
+        if delta <= -1:
+            trend_text = "You're feeling better than you were."
+        elif delta >= 1:
+            trend_text = "Things have been harder lately."
+        else:
+            trend_text = "You're holding steady."
+        st.caption(trend_text)
+
+
+def _render_dashboard(
+    tier: str,
+    probability: float | None,
+    shap_decomposition: list[dict],
+    radar_values: dict,
+    pulse_history: list[dict],
+    top_feature: str,
+):
+    """Single dashboard with 4 cards + privacy banner at top."""
+    tier_lower = tier.lower()
+    pastel_bg = PASTEL_BG.get(tier_lower, THEME["card_bg"])
+    tier_color = _tier_color(tier)
+    label = TIER_LABELS.get(tier, "Here's your result")
+    description = TIER_DESCRIPTIONS.get(tier, "")
+
+    # ── Privacy banner — top of dashboard, always visible ─────────────────
+    _privacy_banner()
+
+    # ── Card 1 — How you are doing ─────────────────────────────────────
+    def _card1():
+        _render_tier_badge(tier)
+        st.markdown(
+            f'<p style="color:{THEME["text"]};font-size:1.05rem;'
+            f'margin:8px 0 0 0;line-height:1.6">{label}</p>',
+            unsafe_allow_html=True,
         )
+        st.markdown(
+            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem;margin:8px 0 0 0;'
+            f'line-height:1.5">{description}</p>',
+            unsafe_allow_html=True,
+        )
+
+    _card_wrap("How you are doing", _card1, pastel_bg=pastel_bg)
+
+    # ── Card 2 — What is affecting this ─────────────────────────────────
+    factors = [
+        item for item in (shap_decomposition or [])
+        if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
+    ][:3]
+
+    def _card2():
+        if not factors:
+            st.markdown(
+                f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+                f"Not enough data yet to show what's affecting this.</p>",
+                unsafe_allow_html=True,
+            )
+            return
+
+        # Always show top 3, expandable for all
+        for item in factors:
+            feat = item.get("feature", "")
+            lbl = FEATURE_LABELS.get(feat, item.get("label", ""))
+            direction = item.get("direction", "")
+            color = "#ef4444" if direction == "increases" else "#10b981"
+            icon = "↑" if direction == "increases" else "→"
+            sentence = _build_factor_sentence(feat, direction == "increases")
+            st.markdown(
+                f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
+                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{icon}</span>'
+                f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                f"{sentence}</p></div>",
+                unsafe_allow_html=True,
+            )
+
+        # Expandable section for all factors
+        all_factors = [
+            item for item in (shap_decomposition or [])
+            if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
+        ]
+        if len(all_factors) > 3:
+            with st.expander(f"See all {len(all_factors)} factors"):
+                for item in all_factors[3:]:
+                    feat = item.get("feature", "")
+                    lbl = FEATURE_LABELS.get(feat, item.get("label", ""))
+                    direction = item.get("direction", "")
+                    color = "#ef4444" if direction == "increases" else "#10b981"
+                    icon = "↑" if direction == "increases" else "→"
+                    sentence = _build_factor_sentence(feat, direction == "increases")
+                    st.markdown(
+                        f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                        f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
+                        f'<span style="color:{color};font-size:1rem;flex-shrink:0">{icon}</span>'
+                        f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                        f"{sentence}</p></div>",
+                        unsafe_allow_html=True,
+                    )
+
+    _card_wrap("What is affecting this", _card2)
+
+    # ── Card 3 — Your trend this week ───────────────────────────────────
+    def _card3():
+        _render_trend_chart(pulse_history)
+
+    _card_wrap("Your trend this week", _card3)
+
+    # ── Card 4 — What might help ────────────────────────────────────────
+    resources = RESOURCES.get(top_feature, [])
+
+    def _card4():
+        if not resources:
+            st.markdown(
+                f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+                f"No specific suggestions yet. Speaking with your manager or HR is always a good step.</p>",
+                unsafe_allow_html=True,
+            )
+            return
+
+        feature_label = FEATURE_LABELS.get(top_feature, top_feature)
+        st.caption(f"Based on: {feature_label}")
+
+        for resource in resources[:3]:
+            st.markdown(
+                f'<div style="padding:14px 16px;background:{THEME["bg"]};'
+                f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
+                f'border-radius:10px;margin-bottom:10px">'
+                f'<p style="margin:0 0 6px 0;color:{THEME["text"]};'
+                f'font-weight:600;font-size:0.92rem">{resource}</p>'
+                f'<button style="background:#0d7377;color:#fff;border:none;'
+                f'border-radius:6px;padding:6px 14px;font-size:0.8rem;cursor:pointer">'
+                f"Read this</button>",
+                unsafe_allow_html=True,
+            )
+
+    _card_wrap("What might help", _card4)
+
+    # ── Dimensions chart (collapsible) ───────────────────────────────────
+    with st.expander("See your wellbeing dimensions"):
+        _render_dimensions_chart(radar_values, tier)
 
 
 # ── Main render function ────────────────────────────────────────────────────
@@ -798,12 +708,13 @@ def render_employee_ux(
     trajectory_data: dict | None = None,
 ):
     """
-    Render the 5-screen employee UX.
-
     Two modes:
     - Demo / local: pass features + seniority_tier
     - API-backed:   pass risk_tier + burnout_probability + shap + resources
+
+    Flow: intro → check-in → dashboard (4 cards, always visible).
     """
+
     # ── Score computation (local mode) ──────────────────────────────────
     if features is not None and seniority_tier is not None:
         try:
@@ -822,19 +733,14 @@ def render_employee_ux(
         tier = result["risk_tier"]
         probability = result.get("burnout_probability")
         shap_decomposition = result.get("shap", [])
-
-        # Filter out internal features
         shap_decomposition = [
             item for item in shap_decomposition
-            if item.get("feature") not in ("missing_ra", "missing_mfs")
-            and item.get("label")
+            if item.get("feature") not in ("missing_ra", "missing_mfs") and item.get("label")
         ]
         shap_decomposition.sort(key=lambda x: abs(x.get("impact_value", 0)), reverse=True)
-
         top_feature = shap_decomposition[0].get("feature", "") if shap_decomposition else ""
-
-        # Compute radar values for demo mode (from raw features)
         radar_values = _compute_radar_from_features(features, seniority_tier)
+        pulse_history = _load_pulse_history(employee_id)
 
     else:
         if risk_tier is None:
@@ -845,18 +751,36 @@ def render_employee_ux(
         shap_decomposition = shap or []
         top_feature = shap_decomposition[0].get("feature", "") if shap_decomposition else ""
 
-        # Compute radar values for API mode (from SHAP decomposition)
-        radar_values = _compute_radar_from_shap(shap_decomposition)
+        # Compute radar from SHAP if available, else placeholder
+        if shap_decomposition:
+            feat_map = {item["feature"]: item["impact_value"] for item in shap_decomposition}
+            max_impact = max(abs(v) for v in feat_map.values()) or 1.0
+            radar_values = {
+                "Workload": round(abs(feat_map.get("resource_allocation", 0)) / max_impact * 100, 1),
+                "Energy levels": round(abs(feat_map.get("mental_fatigue_score", 0)) / max_impact * 100, 1),
+                "How long in this role": round(abs(feat_map.get("tenure_days", 0)) / max_impact * 100, 1),
+                "Work setup": round(abs(feat_map.get("wfh_setup", 0)) / max_impact * 100, 1),
+                "Role level": round(abs(feat_map.get("seniority_tier", 0)) / max_impact * 100, 1),
+                "Organisation type": round(abs(feat_map.get("company_type", 0)) / max_impact * 100, 1),
+            }
+        else:
+            radar_values = {
+                "Workload": 50, "Energy levels": 50,
+                "How long in this role": 50, "Work setup": 50,
+                "Role level": 50, "Organisation type": 50,
+            }
+        pulse_history = _load_pulse_history(employee_id)
 
-    # ── Store for radar screen ──────────────────────────────────────────────
+    # ── Store for screens ────────────────────────────────────────────────
     st.session_state.radar_values = radar_values
+    st.session_state.shap_decomposition = shap_decomposition
+    st.session_state.top_feature = top_feature
 
-    # ── State machine: which screen are we on? ─────────────────────────────
-    # States: intro → checkin → result → radar/factors/trend → resources → done
+    # ── State machine ────────────────────────────────────────────────────
+    # States: intro → checkin → dashboard
     if "ux_screen" not in st.session_state:
         st.session_state.ux_screen = "intro"
 
-    # Reset check-in progress when starting a new assessment
     if st.session_state.ux_screen in ("intro", "done"):
         st.session_state.ux_q_num = 1
         st.session_state.ux_answers = {}
@@ -866,7 +790,6 @@ def render_employee_ux(
     # ── Screen 0: What to expect ────────────────────────────────────────
     if screen == "intro":
         screen_intro()
-        # Start button — bottom of intro screen, right-aligned
         col_spacer, col_btn = st.columns([3, 1])
         with col_btn:
             if st.button("Start check-in →", key="start_checkin", use_container_width=True):
@@ -878,102 +801,24 @@ def render_employee_ux(
     if screen == "checkin":
         def handle_pulse(value: int):
             st.session_state.ux_pulse = value
-            st.session_state.ux_screen = "result"
+            st.session_state.ux_screen = "dashboard"
 
-        result = screen_checkin(handle_pulse)
-        return  # form-based; no results to render here
+        screen_checkin(handle_pulse)
+        return
 
-    # ── Screen 2: Your result ────────────────────────────────────────────
-    elif screen == "result":
-        def on_see_factors():
-            st.session_state.ux_screen = "factors"
-            st.rerun()
-
-        col_dim, col_trend = st.columns([1, 1])
-        with col_dim:
-            if st.button("See your dimensions →", key="see_radar", use_container_width=True):
-                st.session_state.ux_screen = "radar"
-                st.rerun()
-        with col_trend:
-            if st.button("See your trend →", key="see_trend", use_container_width=True):
-                st.session_state.ux_screen = "trend"
-                st.rerun()
-
-        if screen_result(tier, probability, on_see_factors):
-            return  # state updated, rerun will show next screen
-
-    # ── Screen 3: Wellbeing dimensions (radar) ───────────────────────────
-    elif screen == "radar":
-        def on_see_factors():
-            st.session_state.ux_screen = "factors"
-            st.rerun()
-
-        if screen_radar(
-            st.session_state.get("radar_values", {}),
-            tier,
-            on_see_factors,
-        ):
-            return
-
-        if st.button("← Back to my result", key="back_from_radar_main", use_container_width=True):
-            st.session_state.ux_screen = "result"
-            st.rerun()
-
-    # ── Screen 4: What is affecting this ───────────────────────────────
-    elif screen == "factors":
-        def on_see_help():
-            st.session_state.ux_screen = "resources"
-            st.rerun()
-
-        if screen_factors(shap_decomposition, on_see_help):
-            return
-
-        if st.button("← Back to my result", key="back_result", use_container_width=True):
-            st.session_state.ux_screen = "result"
-            st.rerun()
-
-    # ── Screen 4: What might help ───────────────────────────────────────
-    elif screen == "resources":
-        def on_done():
-            st.session_state.ux_screen = "done"
-            st.rerun()
-
-        if screen_resources(top_feature, tier, on_done):
-            return
-
-        if st.button("← Back", key="back_factors", use_container_width=True):
-            st.session_state.ux_screen = "factors"
-            st.rerun()
-
-    # ── Screen 5: Your trend ────────────────────────────────────────────
-    elif screen == "trend":
-        screen_trend(trajectory_data)
-        if st.button("← Back to my result", key="back_trend", use_container_width=True):
-            st.session_state.ux_screen = "result"
-            st.rerun()
-
-    # ── Done state ─────────────────────────────────────────────────────
-    elif screen == "done":
-        st.markdown(
-            f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
-            f"Done</p>",
-            unsafe_allow_html=True,
+    # ── Dashboard ────────────────────────────────────────────────────────
+    if screen == "dashboard":
+        _render_dashboard(
+            tier=tier,
+            probability=probability,
+            shap_decomposition=shap_decomposition,
+            radar_values=radar_values,
+            pulse_history=pulse_history,
+            top_feature=top_feature,
         )
-        st.title("All done for now")
-
-        _privacy_card()
-
-        st.markdown(
-            f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
-            f'border-radius:14px;padding:24px;margin-bottom:16px;text-align:center">'
-            f'<p style="color:{THEME["text"]};font-size:1.05rem;margin:0;line-height:1.6">'
-            f"Come back next week and we'll check in again. "
-            f"Your trend builds over time.</p></div>",
-            unsafe_allow_html=True,
-        )
-
+        st.markdown("---")
         if st.button("Check in again →", key="restart", use_container_width=True):
-            for key in ["ux_screen", "ux_pulse"]:
+            for key in ["ux_screen", "ux_pulse", "ux_q_num", "ux_answers"]:
                 st.session_state.pop(key, None)
             st.rerun()
+        return

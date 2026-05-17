@@ -1048,24 +1048,24 @@ def main():
         role_label = role_display_map.get(role, role)
         name = st.session_state.auth_employee_id or "Unknown"
 
-        # Build nav links as HTML
-        pages = {
-            "employee": [("My Assessment", "Employee")],
-            "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
-            "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-            "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-        }.get(role, [])
+        # Sidebar shown for manager and HR admin only — not for employee (mobile-first, single view)
+        if role not in ("employee",):
+            # Build nav links as HTML
+            pages = {
+                "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
+                "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+                "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+            }.get(role, [])
 
-        current_page = st.session_state.page_nav
-        nav_html = ""
-        for label, page_name in pages:
-            active = current_page == page_name
-            cls = "sb-nav-active" if active else "sb-nav-btn"
-            nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
+            current_page = st.session_state.page_nav
+            nav_html = ""
+            for label, page_name in pages:
+                active = current_page == page_name
+                cls = "sb-nav-active" if active else "sb-nav-btn"
+                nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
 
-        # Render full sidebar as pure HTML
-        with st.sidebar:
-            st.html(_sidebar_html_full(name, role_label, role, nav_html))
+            with st.sidebar:
+                st.html(_sidebar_html_full(name, role_label, role, nav_html))
 
         # Handle sign-out via query param
         if qp.get("signout") == "1":
