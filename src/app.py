@@ -66,49 +66,33 @@ THEME = {
 def _sidebar_html_full(name: str, role_label: str, role: str, nav_html: str) -> str:
     """Render the full sidebar as a single HTML block for complete design control."""
 
-    # Role-specific info cards
-    cards = {
-        "employee": [
-            ("🔒", "Privacy",
-             "Only you see your individual answers. Managers and HR see team averages only — never your name."),
-            ("📊", "What we measure",
-             "Workload, energy levels, recovery between workdays, pressure signals, and how supported you feel."),
-            ("📋", "Your result",
-             "Low = doing well. Moderate = worth watching. High = support available. Critical = please talk to someone."),
-        ],
-        "manager": [
-            ("📈", "ORT explained",
-             "The fraction of your team in High or Critical. If it exceeds 20%, the team is flagged for review."),
-            ("🚩", "Warning signs",
-             "Multiple elevated weeks, consecutive decline, or individuals in Critical. Trend shows direction, not scores."),
-            ("💬", "Supporting your team",
-             "Regular 1:1s work best. Focus on workload, energy, and recovery — not the score."),
-            ("🔒", "What you cannot see",
-             "You cannot see individual answers, individual scores, or who responded. Only team patterns and ORT."),
-        ],
-        "hr_admin": [
-            ("📐", "Methodology",
-             "Random Forest classifier trained on HR-validated burnout labels. SHAP provides per-employee explainability."),
-            ("🚨", "ORT & Critical tier",
-             "ORT ceiling: 20%. Critical capped at 5% of scorable population. Critical employees enter Reviewer Queue within 48h."),
-            ("🔐", "Privacy architecture",
-             "Individual answers only visible to the employee. Managers see only team aggregates. HR sees org-wide aggregates."),
-            ("🔧", "Config & thresholds",
-             "All values in src/config.py: THRESHOLD_A, THRESHOLD_B, ORT_CEILING, CRITICAL_HEALTH_CEILING."),
-        ],
+    # One compact info card per role (not 3-4)
+    role_guide = {
+        "employee": (
+            "🔒 <strong>Privacy</strong> — Only you see your individual scores. "
+            "Managers and HR see team averages only."
+        ),
+        "manager": (
+            "📈 <strong>ORT</strong> — Fraction of team in High or Critical. "
+            "Exceeds 20% → team flagged for review. "
+            "You cannot see individual scores or who responded."
+        ),
+        "hr_admin": (
+            "🚨 <strong>ORT ceiling 20%</strong> — Critical capped at 5% of scorable population. "
+            "Individual answers are never visible to managers."
+        ),
+        "system_admin": (
+            "🚨 <strong>ORT ceiling 20%</strong> — Critical capped at 5% of scorable population. "
+            "Individual answers are never visible to managers."
+        ),
     }
 
-    card_html = ""
-    for icon, heading, body in cards.get(role, cards["employee"]):
-        card_html += (
-            f'<div class="sb-card">'
-            f'<div class="sb-card-header">'
-            f'<span class="sb-card-icon">{icon}</span>'
-            f'<span class="sb-card-heading">{heading}</span>'
-            f'</div>'
-            f'<p class="sb-card-body">{body}</p>'
-            f'</div>'
-        )
+    guide_text = role_guide.get(role, role_guide["employee"])
+    card_html = (
+        f'<div class="sb-card">'
+        f'<p class="sb-card-body">{guide_text}</p>'
+        f'</div>'
+    )
 
     role_badge_color = {
         "employee": "#0d7377",
@@ -825,7 +809,22 @@ def page_employee():
 def page_hr():
     token = st.session_state.get("auth_token")
     if not token:
-        st.warning("Sign in to view the HR dashboard.")
+        # Demo mode — render a mock HR dashboard with no backend needed
+        render_hr_view(
+            scores=[
+                {"risk_tier": tier, "burnout_probability": None}
+                for tier, count in (("low", 28), ("moderate", 18), ("high", 12), ("critical", 4))
+                for _ in range(count)
+            ],
+            teams=[
+                {"name": "Engineering", "member_count": 8, "high_critical_pct": 0.375, "consecutive_weeks_elevated": 2},
+                {"name": "Product", "member_count": 6, "high_critical_pct": 0.167, "consecutive_weeks_elevated": 0},
+                {"name": "Design", "member_count": 5, "high_critical_pct": 0.20, "consecutive_weeks_elevated": 1},
+            ],
+            exclusions={"on_leave": 2, "protected_process": 1, "grievance_cooldown": 0},
+            scoreable=62,
+            responded=52,
+        )
         return
     role = st.session_state.get("auth_role", "")
     if role not in ("hr_admin", "system_admin"):
@@ -893,7 +892,34 @@ def page_hr():
 def page_manager():
     token = st.session_state.get("auth_token")
     if not token:
-        st.warning("Sign in to access the Manager dashboard.")
+        # Demo mode — render a mock manager dashboard with no backend needed
+        render_manager_view(
+            team_id=1,
+            team_name="Engineering",
+            team_size=8,
+            suppressed=False,
+            suppression_reason=None,
+            visibility_locked=False,
+            cycles=[{
+                "cycle_type": "monthly",
+                "closed_at": "2026-05-01",
+                "tiers": {"low": 3, "moderate": 2, "high": 2, "critical": 1},
+            }],
+            tier_distribution={"low": 3, "moderate": 2, "high": 2, "critical": 1},
+            high_critical_pct=0.375,
+            consecutive_weeks_elevated=2,
+            top_factors=[
+                {"feature": "mental_fatigue_score", "avg_impact": 0.21, "direction": "increases"},
+                {"feature": "resource_allocation", "avg_impact": 0.15, "direction": "increases"},
+            ],
+            recommendations=[
+                "Workload negotiation guide",
+                "Energy management toolkit",
+            ],
+            worst_tier="high",
+            ort_ceiling=0.20,
+            team_trajectory_data=None,
+        )
         return
 
     try:
@@ -1025,13 +1051,40 @@ def main():
                     st.session_state.page_nav = "Employee"
                     st.session_state.ux_started = False
                     st.error("Session expired. Please sign in again.")
-                except ApiError as e:
-                    st.session_state.login_failed_attempts = failed + 1
-                    remaining = max(0, 5 - st.session_state.login_failed_attempts)
-                    msg = str(e)
-                    if remaining == 0:
-                        msg += " (locked out — too many attempts)"
-                    st.error(msg)
+                except ApiError:
+                    # No backend running — enter demo mode (no token needed for employee view)
+                    st.session_state.login_failed_attempts = 0
+                    st.session_state.auth_token = None  # demo mode: no backend
+                    st.session_state.auth_employee_id = emp_id
+                    st.session_state.auth_role = (
+                        role_param
+                        if role_param in ("employee", "manager", "hr_admin", "system_admin")
+                        else "employee"
+                    )
+                    # Pre-load demo features keyed to the actual employee ID for this session
+                    st.session_state.ux_demo_employee_id = emp_id
+                    st.session_state.ux_demo_seniority = 2
+                    st.session_state.ux_demo_features = {
+                        "tenure_days": 547.0,
+                        "mental_fatigue_score": 5.0,
+                        "resource_allocation": 5.0,
+                        "wfh_setup": 1.0,
+                        "company_type": 0.0,
+                        "seniority_tier": 2.0,
+                        "missing_ra": 0.0,
+                        "missing_mfs": 0.0,
+                        "tenure_fatigue": 5.0,
+                        "tenure_workload": 5.0,
+                    }
+                    st.session_state.ux_started = True  # ensure role routing fires next render
+                    actual_role = st.session_state.auth_role
+                    default_page = {
+                        "employee": "Employee",
+                        "manager": "Manager",
+                        "hr_admin": "HR Aggregate",
+                        "system_admin": "HR Aggregate",
+                    }.get(actual_role, "Employee")
+                    st.session_state.page_nav = default_page
                 except Exception as e:
                     st.error(f"Login error: {e}")
 
@@ -1048,24 +1101,22 @@ def main():
         role_label = role_display_map.get(role, role)
         name = st.session_state.auth_employee_id or "Unknown"
 
-        # Sidebar shown for manager and HR admin only — not for employee (mobile-first, single view)
-        if role not in ("employee",):
-            # Build nav links as HTML
-            pages = {
-                "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
-                "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-                "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-            }.get(role, [])
+        # Sidebar with role guide — shown for all authenticated users
+        pages = {
+            "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
+            "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+            "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+        }.get(role, [])
 
-            current_page = st.session_state.page_nav
-            nav_html = ""
-            for label, page_name in pages:
-                active = current_page == page_name
-                cls = "sb-nav-active" if active else "sb-nav-btn"
-                nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
+        current_page = st.session_state.page_nav
+        nav_html = ""
+        for label, page_name in pages:
+            active = current_page == page_name
+            cls = "sb-nav-active" if active else "sb-nav-btn"
+            nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
 
-            with st.sidebar:
-                st.html(_sidebar_html_full(name, role_label, role, nav_html))
+        with st.sidebar:
+            st.html(_sidebar_html_full(name, role_label, role, nav_html))
 
         # Handle sign-out via query param
         if qp.get("signout") == "1":

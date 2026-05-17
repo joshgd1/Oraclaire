@@ -123,17 +123,75 @@ def _card_wrap(label: str, contents_fn, pastel_bg: str = None):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ── Collapsible card helpers (CSS defined once, shared across all cards) ──────
+
+def _inject_collapsible_css(pastel_bg: str | None, text_color: str):
+    """Inject the oraclaire-card CSS exactly once, styled for the current card background."""
+    border = "#bbf7d0" if pastel_bg else THEME["border"]
+    card_bg = pastel_bg or THEME["card_bg"]
+    st.markdown(f"""
+    <style>
+    details.oraclaire-card {{
+        background: {card_bg};
+        border: 1px solid {border};
+        border-radius: 12px;
+        margin-bottom: 16px;
+        overflow: hidden;
+    }}
+    details.oraclaire-card summary {{
+        padding: 14px 18px;
+        cursor: pointer;
+        list-style: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: {text_color};
+        font-size: 0.95rem;
+        font-weight: 600;
+        font-family: inherit;
+    }}
+    details.oraclaire-card summary::-webkit-details-marker {{ display: none; }}
+    details.oraclaire-card summary::after {{
+        content: '▼';
+        color: {text_color};
+        font-size: 0.8rem;
+    }}
+    details.oraclaire-card[open] summary::after {{ content: '▲'; }}
+    details.oraclaire-card .card-body {{
+        padding: 0 18px 16px;
+        border-top: 1px solid {border};
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def _collapsible_card(label: str, card_id: str, default_open: bool = False):
+    """Render an HTML details/summary card (CSS injected once by _inject_collapsible_css)."""
+    open_attr = " open" if default_open else ""
+    st.markdown(
+        f'<details class="oraclaire-card"{open_attr} id="d_{card_id}">'
+        f'<summary>{label}</summary>'
+        f'<div class="card-body">',
+        unsafe_allow_html=True,
+    )
+
+
+def _collapsible_end():
+    st.markdown("</div></details>", unsafe_allow_html=True)
+
+
 def _render_tier_badge(tier: str):
     """Colored badge showing tier name + plain-language signal label."""
     color = THEME.get(tier.lower(), "#888")
     signal = SIGNAL_LABELS.get(tier.lower(), "")
-    # Use stored card text color if available (for pastel backgrounds), else secondary
+    # Use stored card text color for the badge text — ensures visibility on pastel backgrounds
+    tc = st.session_state.get("_card_text_color", THEME["text"])
     tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
     st.markdown(
         f'<span style="display:inline-flex;align-items:center;gap:12px;'
         f'padding:10px 18px;border-radius:10px;background:{color}18;'
         f'border:1px solid {color}33;font-size:0.85rem;font-weight:700;'
-        f'text-transform:uppercase;letter-spacing:0.05em;color:{color}">'
+        f'text-transform:uppercase;letter-spacing:0.05em;color:{tc}">'
         f"{tier.upper()}</span>"
         f'&nbsp;<span style="color:{tcs};font-size:0.9rem;font-weight:400">'
         f"{signal}</span>",
@@ -491,29 +549,29 @@ def _render_dimensions_chart(radar_values: dict, tier: str):
     )
     fig.update_layout(
         polar=dict(
-            bgcolor="rgba(0,0,0,0)",
+            bgcolor="#2a2a3e",
             radialaxis=dict(
                 range=[0, 100],
                 tickvals=[0, 50, 100],
                 ticktext=["0", "50", "100"],
-                tickfont=dict(color="#9ca3af", size=10),
-                tickcolor="#3d3d5c",
-                linecolor="#3d3d5c",
-                gridcolor="#3d3d5c",
+                tickfont=dict(color="#d1d5db", size=10),
+                tickcolor="#4b5563",
+                linecolor="#4b5563",
+                gridcolor="#374151",
                 showticklabels=True,
                 side="clockwise",
             ),
             angularaxis=dict(
-                tickfont=dict(color="#e5e7eb", size=10, family="Inter, sans-serif"),
-                tickcolor="#3d3d5c",
-                linecolor="#3d3d5c",
-                gridcolor="#3d3d5c",
+                tickfont=dict(color="#f3f4f6", size=11, family="Inter, sans-serif"),
+                tickcolor="#374151",
+                linecolor="#374151",
+                gridcolor="#374151",
                 rotation=90,
                 direction="clockwise",
             ),
         ),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="#2a2a3e",
+        plot_bgcolor="#2a2a3e",
         showlegend=False,
         margin=dict(l=20, r=20, t=20, b=20),
         height=300,
@@ -525,11 +583,16 @@ def _render_dimensions_chart(radar_values: dict, tier: str):
 def _render_trend_chart(history: list[dict]):
     """Render trend sparkline from pulse history, or a placeholder if empty."""
     if not history:
+        # Empty state — design: icon + specific message + secondary + CTA hint
         st.markdown(
             '<div style="background:#f0fdfa;border:1px dashed #99f6e4;'
-            'border-radius:10px;padding:20px;text-align:center">'
-            '<p style="margin:0;color:#065f46;font-size:0.9rem;line-height:1.5">'
-            "Your trend will appear here after a few check-ins. Come back next week.</p></div>",
+            'border-radius:12px;padding:28px 24px;text-align:center;margin-bottom:8px">'
+            '<p style="font-size:2.2rem;margin:0 0 12px 0">📊</p>'
+            '<p style="margin:0 0 6px 0;color:#065f46;font-size:0.95rem;font-weight:600;line-height:1.4">'
+            "Your weekly trend will appear here</p>"
+            '<p style="margin:0;color:#065f46;font-size:0.85rem;line-height:1.5;opacity:0.75">'
+            "Complete a weekly check-in to start tracking your wellbeing over time.</p>"
+            "</div>",
             unsafe_allow_html=True,
         )
         return
@@ -586,14 +649,30 @@ def _render_dashboard(
     label = TIER_LABELS.get(tier, "Here's your result")
     description = TIER_DESCRIPTIONS.get(tier, "")
 
+    # Text colors — dark on pastel backgrounds (WCAG 4.5:1 compliant)
+    tc = "#065f46" if pastel_bg else THEME["text"]
+    tcs = "#047857" if pastel_bg else THEME["text_secondary"]
+    st.session_state["_card_text_color"] = tc
+    st.session_state["_card_text_secondary"] = tcs
+
+    # ── Page-level H1 ──────────────────────────────────────────────────────
+    st.markdown(
+        f'<h1 style="font-size:1.5rem;font-weight:700;color:{tc};margin:0 0 4px 0;'
+        f'line-height:1.3">Your wellbeing check-in</h1>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<p style="color:{tcs};font-size:0.875rem;margin:0 0 20px 0">'
+        f"Here's what we found from your responses</p>",
+        unsafe_allow_html=True,
+    )
+
     # ── Privacy banner — top of dashboard, always visible ─────────────────
     _privacy_banner()
 
     # ── Card 1 — How you are doing ─────────────────────────────────────
     def _card1():
         _render_tier_badge(tier)
-        tc = st.session_state.get("_card_text_color", THEME["text"])
-        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
         st.markdown(
             f'<p style="color:{tc};font-size:1.05rem;'
             f'margin:8px 0 0 0;line-height:1.6">{label}</p>',
@@ -607,75 +686,69 @@ def _render_dashboard(
 
     _card_wrap("How you are doing", _card1, pastel_bg=pastel_bg)
 
+    # ── CSS for collapsible cards — defined once at module level ───────────
+    # Forces readable text on all background colours (WCAG compliance).
+    # Injected once; shared by all four collapsible cards below.
+    _inject_collapsible_css(pastel_bg, tc)
+
     # ── Card 2 — What is affecting this ─────────────────────────────────
     factors = [
         item for item in (shap_decomposition or [])
         if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
     ][:3]
+    all_factors = [
+        item for item in (shap_decomposition or [])
+        if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
+    ]
 
-    def _card2():
-        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
-        if not factors:
-            st.markdown(
-                f'<p style="color:{tcs};font-size:0.9rem">'
-                f"Not enough data yet to show what's affecting this.</p>",
-                unsafe_allow_html=True,
-            )
-            return
-
-        # Always show top 3, expandable for all
+    _collapsible_card("💡 What is affecting this", "factors")
+    if not factors:
+        st.markdown(
+            f'<p style="color:{tcs};font-size:0.9rem">'
+            f"Not enough data yet to show what's affecting this.</p>",
+            unsafe_allow_html=True,
+        )
+    else:
         for item in factors:
             feat = item.get("feature", "")
-            lbl = FEATURE_LABELS.get(feat, item.get("label", ""))
             direction = item.get("direction", "")
             color = "#ef4444" if direction == "increases" else "#10b981"
-            icon = "↑" if direction == "increases" else "→"
+            arrow = "↑" if direction == "increases" else "→"
             sentence = _build_factor_sentence(feat, direction == "increases")
             st.markdown(
                 f'<div style="display:flex;align-items:flex-start;gap:10px;'
                 f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
-                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{icon}</span>'
+                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
                 f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
                 f"{sentence}</p></div>",
                 unsafe_allow_html=True,
             )
-
-        # Expandable section for all factors
-        all_factors = [
-            item for item in (shap_decomposition or [])
-            if item.get("label") and item.get("feature") not in ("missing_ra", "missing_mfs")
-        ]
         if len(all_factors) > 3:
-            with st.expander(f"See all {len(all_factors)} factors"):
-                for item in all_factors[3:]:
-                    feat = item.get("feature", "")
-                    lbl = FEATURE_LABELS.get(feat, item.get("label", ""))
-                    direction = item.get("direction", "")
-                    color = "#ef4444" if direction == "increases" else "#10b981"
-                    icon = "↑" if direction == "increases" else "→"
-                    sentence = _build_factor_sentence(feat, direction == "increases")
-                    st.markdown(
-                        f'<div style="display:flex;align-items:flex-start;gap:10px;'
-                        f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
-                        f'<span style="color:{color};font-size:1rem;flex-shrink:0">{icon}</span>'
-                        f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
-                        f"{sentence}</p></div>",
-                        unsafe_allow_html=True,
-                    )
+            st.markdown(f"**+ {len(all_factors) - 3} more factors**")
+            for item in all_factors[3:]:
+                feat = item.get("feature", "")
+                direction = item.get("direction", "")
+                color = "#ef4444" if direction == "increases" else "#10b981"
+                arrow = "↑" if direction == "increases" else "→"
+                sentence = _build_factor_sentence(feat, direction == "increases")
+                st.markdown(
+                    f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                    f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
+                    f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
+                    f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                    f"{sentence}</p></div>",
+                    unsafe_allow_html=True,
+                )
+    _collapsible_end()
 
-    _card_wrap("What is affecting this", _card2)
+    # ── Card 3 — Your trend this week ────────────────────────────────────
+    _collapsible_card("📈 Your trend this week", "trend")
+    _render_trend_chart(pulse_history)
+    _collapsible_end()
 
-    # ── Card 3 — Your trend this week ───────────────────────────────────
-    def _card3():
-        _render_trend_chart(pulse_history)
-
-    _card_wrap("Your trend this week", _card3)
-
-    # ── Card 4 — What might help ────────────────────────────────────────
-    # Derive recommendation feature: prefer SHAP top_feature, fall back to highest-scored survey answer
+    # ── Card 4 — What might help ─────────────────────────────────────────
     rec_feature = top_feature
     if not RESOURCES.get(rec_feature):
-        # Find the survey answer with the highest score (worst burnout signal)
         worst_score = 0
         worst_feat = None
         for feat, score in (ux_answers or {}).items():
@@ -684,44 +757,46 @@ def _render_dashboard(
                 worst_feat = feat
         if worst_feat and RESOURCES.get(worst_feat):
             rec_feature = worst_feat
-
     resources = RESOURCES.get(rec_feature, [])
     rec_label = FEATURE_LABELS.get(rec_feature, rec_feature or "your responses")
 
-    def _card4():
-        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
-        if not resources:
-            st.markdown(
-                f'<p style="color:{tcs};font-size:0.9rem">'
-                f"No specific suggestions yet. Speaking with your manager or HR is always a good step.</p>",
-                unsafe_allow_html=True,
-            )
-            return
-
+    _collapsible_card("🌱 What might help", "resources")
+    if not resources:
         st.markdown(
-            f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 8px 0">'
-            f"Based on: {rec_label}</p>",
+            f'<p style="color:{tcs};font-size:0.9rem">'
+            f"No specific suggestions yet. Speaking with your manager or HR is always a good step.</p>",
             unsafe_allow_html=True,
         )
+    else:
+        st.markdown(
+            f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 10px 0">'
+            f"Based on: <strong>{rec_label}</strong></p>",
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(len(resources[:3])) if resources else st.columns(1)
+        for idx, resource in enumerate(resources[:3]):
+            with (cols[idx] if len(resources) > 1 else cols[0]):
+                st.markdown(
+                    f'<div style="padding:12px 14px;background:{THEME["bg"]};'
+                    f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
+                    f'border-radius:10px;margin-bottom:8px">'
+                    f'<p style="margin:0 0 10px 0;color:{THEME["text"]};'
+                    f'font-weight:600;font-size:0.88rem;line-height:1.4">{resource}</p></div>',
+                    unsafe_allow_html=True,
+                )
+                search_url = f"https://www.google.com/search?q={resource.replace(' ', '+')}"
+                st.link_button("Read this →", search_url, use_container_width=True)
+    _collapsible_end()
 
-        for resource in resources[:3]:
-            st.markdown(
-                f'<div style="padding:14px 16px;background:{THEME["bg"]};'
-                f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
-                f'border-radius:10px;margin-bottom:10px">'
-                f'<p style="margin:0 0 6px 0;color:{THEME["text"]};'
-                f'font-weight:600;font-size:0.92rem">{resource}</p>'
-                f'<button style="background:#0d7377;color:#fff;border:none;'
-                f'border-radius:6px;padding:6px 14px;font-size:0.8rem;cursor:pointer">'
-                f"Read this</button>",
-                unsafe_allow_html=True,
-            )
-
-    _card_wrap("What might help", _card4)
-
-    # ── Dimensions chart (collapsible) ───────────────────────────────────
-    with st.expander("See your wellbeing dimensions"):
-        _render_dimensions_chart(radar_values, tier)
+    # ── Card 5 — Wellbeing dimensions ───────────────────────────────────
+    _collapsible_card("🧠 Your wellbeing dimensions", "dimensions")
+    st.markdown(
+        f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 12px 0">'
+        f"Your score across five key areas of wellbeing</p>",
+        unsafe_allow_html=True,
+    )
+    _render_dimensions_chart(radar_values, tier)
+    _collapsible_end()
 
 
 # ── Main render function ────────────────────────────────────────────────────

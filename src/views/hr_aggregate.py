@@ -46,9 +46,15 @@ def render_header():
         f'letter-spacing:0.08em;color:{THEME_HR["text_secondary"]};margin:0">HR Admin</p>',
         unsafe_allow_html=True,
     )
-    st.title("Organisational Burnout Overview")
-    st.caption(
-        "Aggregate risk across the organisation. No individual scores are shown."
+    st.markdown(
+        f'<h1 style="font-size:1.5rem;font-weight:700;color:{THEME_HR["text"]};margin:0 0 4px 0;'
+        f'line-height:1.3">Organisational Burnout Overview</h1>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<p style="color:{THEME_HR["text_secondary"]};font-size:0.875rem;margin:0 0 20px 0">'
+        f"Aggregate risk across the organisation &mdash; no individual scores are shown.</p>",
+        unsafe_allow_html=True,
     )
 
 
