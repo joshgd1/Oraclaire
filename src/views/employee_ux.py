@@ -311,11 +311,12 @@ def screen_checkin(on_submit) -> int | None:
     _privacy_banner()
 
     if q_num > total:
-        answers = st.session_state.get("ux_answers", {})
-        raw_score = sum(answers.values()) / len(answers)
-        pulse = max(1, min(5, round(raw_score)))
-        on_submit(pulse)
-        st.rerun()
+        # Guard: only call on_submit once per check-in cycle
+        if not st.session_state.get("_ux_checkin_done"):
+            st.session_state._ux_checkin_done = True
+            on_submit()
+            st.rerun()
+        return
 
     col1, col2 = st.columns([1, 3])
     with col1:
@@ -569,6 +570,7 @@ def _render_dashboard(
     radar_values: dict,
     pulse_history: list[dict],
     top_feature: str,
+    ux_answers: dict,
 ):
     """Single dashboard with 4 cards + privacy banner at top."""
     tier_lower = tier.lower()
@@ -660,7 +662,21 @@ def _render_dashboard(
     _card_wrap("Your trend this week", _card3)
 
     # ── Card 4 — What might help ────────────────────────────────────────
-    resources = RESOURCES.get(top_feature, [])
+    # Derive recommendation feature: prefer SHAP top_feature, fall back to highest-scored survey answer
+    rec_feature = top_feature
+    if not RESOURCES.get(rec_feature):
+        # Find the survey answer with the highest score (worst burnout signal)
+        worst_score = 0
+        worst_feat = None
+        for feat, score in (ux_answers or {}).items():
+            if score is not None and score > worst_score:
+                worst_score = score
+                worst_feat = feat
+        if worst_feat and RESOURCES.get(worst_feat):
+            rec_feature = worst_feat
+
+    resources = RESOURCES.get(rec_feature, [])
+    rec_label = FEATURE_LABELS.get(rec_feature, rec_feature or "your responses")
 
     def _card4():
         if not resources:
@@ -671,8 +687,7 @@ def _render_dashboard(
             )
             return
 
-        feature_label = FEATURE_LABELS.get(top_feature, top_feature)
-        st.caption(f"Based on: {feature_label}")
+        st.caption(f"Based on: {rec_label}")
 
         for resource in resources[:3]:
             st.markdown(
@@ -784,6 +799,7 @@ def render_employee_ux(
     if st.session_state.ux_screen in ("intro", "done"):
         st.session_state.ux_q_num = 1
         st.session_state.ux_answers = {}
+        st.session_state._ux_checkin_done = False
 
     screen = st.session_state.ux_screen
 
@@ -815,10 +831,11 @@ def render_employee_ux(
             radar_values=radar_values,
             pulse_history=pulse_history,
             top_feature=top_feature,
+            ux_answers=st.session_state.get("ux_answers", {}),
         )
         st.markdown("---")
         if st.button("Check in again →", key="restart", use_container_width=True):
-            for key in ["ux_screen", "ux_pulse", "ux_q_num", "ux_answers"]:
+            for key in ["ux_screen", "ux_pulse", "ux_q_num", "ux_answers", "_ux_checkin_done"]:
                 st.session_state.pop(key, None)
             st.rerun()
         return
