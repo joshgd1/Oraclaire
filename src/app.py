@@ -66,49 +66,33 @@ THEME = {
 def _sidebar_html_full(name: str, role_label: str, role: str, nav_html: str) -> str:
     """Render the full sidebar as a single HTML block for complete design control."""
 
-    # Role-specific info cards
-    cards = {
-        "employee": [
-            ("🔒", "Privacy",
-             "Only you see your individual answers. Managers and HR see team averages only — never your name."),
-            ("📊", "What we measure",
-             "Workload, energy levels, recovery between workdays, pressure signals, and how supported you feel."),
-            ("📋", "Your result",
-             "Low = doing well. Moderate = worth watching. High = support available. Critical = please talk to someone."),
-        ],
-        "manager": [
-            ("📈", "ORT explained",
-             "The fraction of your team in High or Critical. If it exceeds 20%, the team is flagged for review."),
-            ("🚩", "Warning signs",
-             "Multiple elevated weeks, consecutive decline, or individuals in Critical. Trend shows direction, not scores."),
-            ("💬", "Supporting your team",
-             "Regular 1:1s work best. Focus on workload, energy, and recovery — not the score."),
-            ("🔒", "What you cannot see",
-             "You cannot see individual answers, individual scores, or who responded. Only team patterns and ORT."),
-        ],
-        "hr_admin": [
-            ("📐", "Methodology",
-             "Random Forest classifier trained on HR-validated burnout labels. SHAP provides per-employee explainability."),
-            ("🚨", "ORT & Critical tier",
-             "ORT ceiling: 20%. Critical capped at 5% of scorable population. Critical employees enter Reviewer Queue within 48h."),
-            ("🔐", "Privacy architecture",
-             "Individual answers only visible to the employee. Managers see only team aggregates. HR sees org-wide aggregates."),
-            ("🔧", "Config & thresholds",
-             "All values in src/config.py: THRESHOLD_A, THRESHOLD_B, ORT_CEILING, CRITICAL_HEALTH_CEILING."),
-        ],
+    # One compact info card per role (not 3-4)
+    role_guide = {
+        "employee": (
+            "🔒 <strong>Privacy</strong> — Only you see your individual scores. "
+            "Managers and HR see team averages only."
+        ),
+        "manager": (
+            "📈 <strong>ORT</strong> — Fraction of team in High or Critical. "
+            "Exceeds 20% → team flagged for review. "
+            "You cannot see individual scores or who responded."
+        ),
+        "hr_admin": (
+            "🚨 <strong>ORT ceiling 20%</strong> — Critical capped at 5% of scorable population. "
+            "Individual answers are never visible to managers."
+        ),
+        "system_admin": (
+            "🚨 <strong>ORT ceiling 20%</strong> — Critical capped at 5% of scorable population. "
+            "Individual answers are never visible to managers."
+        ),
     }
 
-    card_html = ""
-    for icon, heading, body in cards.get(role, cards["employee"]):
-        card_html += (
-            f'<div class="sb-card">'
-            f'<div class="sb-card-header">'
-            f'<span class="sb-card-icon">{icon}</span>'
-            f'<span class="sb-card-heading">{heading}</span>'
-            f'</div>'
-            f'<p class="sb-card-body">{body}</p>'
-            f'</div>'
-        )
+    guide_text = role_guide.get(role, role_guide["employee"])
+    card_html = (
+        f'<div class="sb-card">'
+        f'<p class="sb-card-body">{guide_text}</p>'
+        f'</div>'
+    )
 
     role_badge_color = {
         "employee": "#0d7377",
@@ -497,6 +481,43 @@ def _tier_badge_html(tier: str, probability: float) -> str:
     )
 
 
+def _get_demo_features(emp_id: str) -> dict:
+    """Generate deterministic demo features from employee ID.
+
+    Each employee ID produces consistent but distinct features,
+    so login 1, 2, 3 each show different risk profiles.
+    """
+    # Deterministic hash from employee ID string
+    seed = sum(ord(c) * (i + 1) for i, c in enumerate(emp_id))
+
+    # Map seed to distinct but plausible feature ranges
+    # Mental fatigue: 3-8 (higher = more fatigued = higher risk)
+    mental_fatigue = 3.0 + (seed % 50) / 10.0
+    # Resource allocation: 4-9 (higher = more overloaded = higher risk)
+    resource_alloc = 4.0 + ((seed * 7) % 50) / 10.0
+    # Tenure days: 90-1200 (longer tenure = lower risk generally)
+    tenure = 90.0 + (seed * 13) % 1110.0
+    # Work setup: 0=wfh, 1=hybrid, 2=office
+    wfh_setup = float((seed * 3) % 3)
+    # Seniority: 1-4
+    seniority = 1.0 + float((seed * 5) % 4)
+    # Company type: 0-3
+    company_type = float((seed * 11) % 4)
+
+    return {
+        "tenure_days": round(tenure, 1),
+        "mental_fatigue_score": round(mental_fatigue, 1),
+        "resource_allocation": round(resource_alloc, 1),
+        "wfh_setup": round(wfh_setup, 1),
+        "company_type": round(company_type, 1),
+        "seniority_tier": round(seniority, 1),
+        "missing_ra": 0.0,
+        "missing_mfs": 0.0,
+        "tenure_fatigue": round(mental_fatigue, 1),
+        "tenure_workload": round(resource_alloc, 1),
+    }
+
+
 def _clear_auth():
     """Clear auth session state after token expiry or sign-out."""
     for key in ["auth_token", "auth_employee_id", "auth_role"]:
@@ -522,237 +543,149 @@ def ensure_model():
 # ── Login page ────────────────────────────────────────────────────────────────
 
 def page_landing():
-    """Split-screen login page rendered as pure HTML.
+    """Split-screen login: left branding via st.html(), right form via st.form().
 
-    Left panel: teal gradient with branding and feature pills.
-    Right panel: white card with Employee ID field and Sign in button.
-    Both panels and the form are in a single st.html() call so they render
-    together in the DOM.
+    st.form() ensures role dropdown is properly submitted via Streamlit's message
+    protocol. CSS positions the form in the right 60vw beside the branding.
     """
+    # Left branding panel — pure HTML
     st.html(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap');
-
-        section[data-testid="stMain"] {
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
-            width: 100vw !important; height: 100vh !important;
-            overflow: hidden !important;
-            background: #ffffff !important;
-        }
-        [data-testid="stSidebar"] { display: none !important; }
-
         div.login-left {
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
-            width: 40vw !important; height: 100vh !important;
+            position: fixed; top: 0; left: 0; width: 40vw; height: 100vh;
             background: linear-gradient(155deg, #0a3d47 0%, #0d5650 35%, #0d7377 60%, #14919b 100%);
-            display: flex !important; flex-direction: column !important;
-            justify-content: center !important;
-            padding: 60px 52px !important;
-            box-sizing: border-box !important;
-            overflow: hidden !important; z-index: 1 !important;
-        }
-        div.login-right {
-            position: fixed !important;
-            top: 0 !important; right: 0 !important;
-            width: 60vw !important; height: 100vh !important;
-            background: #ffffff !important;
-            display: flex !important; align-items: center !important;
-            justify-content: center !important;
-            padding: 60px 48px !important;
-            box-sizing: border-box !important;
-            overflow-y: auto !important; z-index: 1 !important;
-        }
-        div.login-card {
-            width: 100% !important; max-width: 420px !important;
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 60px 52px; box-sizing: border-box;
+            pointer-events: none; z-index: 0;
         }
         div.login-blob1 {
-            position: absolute !important; top: -120px !important; right: -100px !important;
-            width: 420px !important; height: 420px !important;
-            border-radius: 50% !important;
-            background: rgba(20,145,155,0.22) !important;
-            filter: blur(60px) !important; pointer-events: none !important;
+            position: absolute; top: -120px; right: -100px;
+            width: 420px; height: 420px; border-radius: 50%;
+            background: rgba(20,145,155,0.22); filter: blur(60px); pointer-events: none;
         }
         div.login-blob2 {
-            position: absolute !important; bottom: -80px !important; left: -60px !important;
-            width: 320px !important; height: 320px !important;
-            border-radius: 50% !important;
-            background: rgba(13,115,119,0.35) !important;
-            filter: blur(50px) !important; pointer-events: none !important;
+            position: absolute; bottom: -80px; left: -60px;
+            width: 320px; height: 320px; border-radius: 50%;
+            background: rgba(13,115,119,0.35); filter: blur(50px); pointer-events: none;
         }
         div.login-dot1 {
-            position: absolute !important; top: 80px !important; right: 50px !important;
-            width: 14px !important; height: 14px !important;
-            border-radius: 50% !important;
-            background: rgba(255,255,255,0.25) !important; pointer-events: none !important;
+            position: absolute; top: 80px; right: 50px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: rgba(255,255,255,0.25); pointer-events: none;
         }
         div.login-dot2 {
-            position: absolute !important; bottom: 140px !important; left: 40px !important;
-            width: 8px !important; height: 8px !important;
-            border-radius: 50% !important;
-            background: rgba(255,255,255,0.18) !important; pointer-events: none !important;
+            position: absolute; bottom: 140px; left: 40px;
+            width: 8px; height: 8px; border-radius: 50%;
+            background: rgba(255,255,255,0.18); pointer-events: none;
         }
-        .login-label {
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.8rem !important; font-weight: 600 !important;
-            color: #374151 !important; margin-bottom: 6px !important;
-            display: block !important;
+        div.login-brand { position: relative; z-index: 1; }
+        div.login-brand-header {
+            display: inline-flex; align-items: center; gap: 12px; margin-bottom: 48px;
         }
-        .login-input {
-            width: 100% !important;
-            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
-            background: #f9fafb !important; color: #111827 !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important; padding: 10px 14px !important;
-            box-sizing: border-box !important;
-            transition: border-color 0.15s !important;
-            outline: none !important;
+        div.login-brand-icon {
+            width: 44px; height: 44px; background: rgba(255,255,255,0.15);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2);
         }
-        .login-input:focus {
-            border-color: #0d7377 !important;
-            background: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
+        span.login-brand-name {
+            font-size: 1.15rem; font-weight: 700; color: #ffffff; letter-spacing: -0.01em;
+            font-family: 'Inter', sans-serif;
         }
-        .login-input::placeholder { color: #9ca3af !important; }
-        .login-input {
-            width: 100% !important;
-            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
-            background: #f9fafb !important; color: #111827 !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important; padding: 10px 14px !important;
-            box-sizing: border-box !important;
-            transition: border-color 0.15s !important;
-            outline: none !important;
-            -webkit-appearance: none !important;
-            appearance: none !important;
+        h1.login-brand-heading {
+            font-family: 'DM Serif Display', Georgia, serif;
+            font-size: 2.8rem; font-weight: 400; color: #ffffff;
+            line-height: 1.18; margin: 0 0 20px 0; letter-spacing: -0.02em;
         }
-        select.login-input {
-            cursor: pointer !important;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
-            background-repeat: no-repeat !important;
-            background-position: right 14px center !important;
-            padding-right: 36px !important;
+        p.login-brand-sub {
+            font-size: 0.95rem; font-weight: 400; color: rgba(255,255,255,0.72);
+            line-height: 1.65; margin: 0 0 52px 0; max-width: 300px;
+            font-family: 'Inter', sans-serif;
         }
-        select.login-input:focus {
-            border-color: #0d7377 !important;
-            background-color: #ffffff !important;
-            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
+        div.login-badges { position: relative; z-index: 1; }
+        div.login-badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 100px; padding: 7px 14px; margin-bottom: 10px; margin-right: 8px;
         }
-        .btn-primary {
-            width: 100% !important; background: #0d7377 !important;
-            color: #ffffff !important; border: none !important;
-            border-radius: 10px !important;
-            font-family: 'Inter', sans-serif !important;
-            font-size: 0.9rem !important; font-weight: 600 !important;
-            padding: 11px 20px !important;
-            cursor: pointer !important;
-            transition: background 0.15s, transform 0.1s !important;
-            margin-top: 4px !important;
-        }
-        .btn-primary:hover { background: #0a5f66 !important; transform: translateY(-1px) !important; }
-        .stMainBlockContainer {
-            width: 100% !important; max-width: 100% !important; padding: 0 !important;
+        span.login-badge-text { font-size: 0.78rem; font-weight: 500; color: rgba(255,255,255,0.88); }
+        div.login-footer {
+            position: absolute; bottom: 32px; left: 52px;
+            font-size: 0.72rem; color: rgba(255,255,255,0.38);
+            font-family: 'Inter', sans-serif;
         }
         </style>
-
         <div class="login-left">
             <div class="login-blob1"></div>
             <div class="login-blob2"></div>
             <div class="login-dot1"></div>
             <div class="login-dot2"></div>
-
-            <div style="display:inline-flex;align-items:center;gap:12px;margin-bottom:48px;position:relative;z-index:1">
-                <div style="width:44px;height:44px;background:rgba(255,255,255,0.15);border-radius:12px;
-                            display:flex;align-items:center;justify-content:center;
-                            backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2)">
-                    <span style="font-size:1.4rem">🧠</span>
+            <div class="login-brand">
+                <div class="login-brand-header">
+                    <div class="login-brand-icon"><span style="font-size:1.4rem">🧠</span></div>
+                    <span class="login-brand-name">Oraclaire</span>
                 </div>
-                <span style="font-family:'Inter',sans-serif;font-size:1.15rem;font-weight:700;
-                            color:#ffffff;letter-spacing:-0.01em">Oraclaire</span>
-            </div>
-
-            <h1 style="font-family:'DM Serif Display',Georgia,serif;font-size:2.8rem;font-weight:400;
-                      color:#ffffff;line-height:1.18;margin:0 0 20px 0;letter-spacing:-0.02em;
-                      position:relative;z-index:1">Your wellbeing,<br>protected.</h1>
-
-            <p style="font-family:'Inter',sans-serif;font-size:0.95rem;font-weight:400;
-                      color:rgba(255,255,255,0.72);line-height:1.65;margin:0 0 52px 0;
-                      max-width:300px;position:relative;z-index:1">
-                Burnout risk insights for you and your team — private, collaborative, and early.
-                Used by HR teams at forward-thinking companies.
-            </p>
-
-            <div style="position:relative;z-index:1">
-                <div style="display:inline-flex;align-items:center;gap:8px;
-                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                    <span style="font-size:0.8rem">🔒</span>
-                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                                color:rgba(255,255,255,0.88)">End-to-end encrypted</span>
-                </div>
-                <div style="display:inline-flex;align-items:center;gap:8px;
-                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                    <span style="font-size:0.8rem">👥</span>
-                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                                color:rgba(255,255,255,0.88)">Managers see trends only</span>
-                </div>
-                <div style="display:inline-flex;align-items:center;gap:8px;
-                            background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);
-                            border-radius:100px;padding:7px 14px;margin-bottom:10px;margin-right:8px">
-                    <span style="font-size:0.8rem">✓</span>
-                    <span style="font-family:'Inter',sans-serif;font-size:0.78rem;font-weight:500;
-                                color:rgba(255,255,255,0.88)">HR-validated methodology</span>
+                <h1 class="login-brand-heading">Your wellbeing,<br>protected.</h1>
+                <p class="login-brand-sub">
+                    Burnout risk insights for you and your team — private, collaborative, and early.
+                    Used by HR teams at forward-thinking companies.
+                </p>
+                <div class="login-badges">
+                    <div class="login-badge"><span>🔒</span><span class="login-badge-text">End-to-end encrypted</span></div>
+                    <div class="login-badge"><span>👥</span><span class="login-badge-text">Managers see trends only</span></div>
+                    <div class="login-badge"><span>✓</span><span class="login-badge-text">HR-validated methodology</span></div>
                 </div>
             </div>
-
-            <div style="position:absolute;bottom:32px;left:52px;font-family:'Inter',sans-serif;
-                        font-size:0.72rem;color:rgba(255,255,255,0.38);z-index:1">
-                © 2026 Oraclaire. All rights reserved.
-            </div>
-        </div>
-
-        <div class="login-right">
-            <div class="login-card">
-                <div style="margin-bottom:32px">
-                    <h2 style="font-family:'Inter',sans-serif;font-size:1.55rem;font-weight:700;
-                              color:#111827;margin:0 0 8px 0;letter-spacing:-0.025em">
-                        Sign in to Oraclaire
-                    </h2>
-                    <p style="font-family:'Inter',sans-serif;font-size:0.875rem;color:#6b7280;
-                              margin:0;line-height:1.5">
-                        Access your personalised burnout risk dashboard
-                    </p>
-                </div>
-
-                <form id="loginForm" method="GET" style="display:flex;flex-direction:column;gap:16px">
-                    <div>
-                        <label class="login-label" for="empIdInput">Employee ID</label>
-                        <input class="login-input" type="text" id="empIdInput" name="emp_id"
-                               placeholder="e.g. 1" autocomplete="off" />
-                    </div>
-                    <div>
-                        <label class="login-label" for="roleSelect">Role</label>
-                        <select class="login-input" id="roleSelect" name="role"
-                                style="cursor:pointer">
-                            <option value="employee">Employee</option>
-                            <option value="hr_admin">HR Admin</option>
-                            <option value="manager">Manager</option>
-                        </select>
-                    </div>
-                    <button class="btn-primary" type="submit">Sign in</button>
-                </form>
-            </div>
+            <div class="login-footer">© 2026 Oraclaire. All rights reserved.</div>
         </div>
         """
     )
+
+    # Right panel — Streamlit form in right 60vw
+    # CSS pushes it right of the 40vw branding panel
+    st.markdown(
+        """
+        <style>
+        [data-testid="stMainBlockContainer"] { margin-left: 40vw !important; width: 60vw !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.form("login", clear_on_submit=True):
+        st.markdown("### Sign in to Oraclaire")
+        st.caption("Access your personalised burnout risk dashboard")
+        emp_id = st.text_input("Employee ID", placeholder="e.g. 1")
+        role = st.selectbox(
+            "Role",
+            options=["employee", "manager", "hr_admin"],
+            format_func=lambda r: {"employee": "Employee", "manager": "Manager", "hr_admin": "HR Admin"}[r],
+        )
+        submitted = st.form_submit_button("Sign in", type="primary")
+        if submitted and emp_id:
+            qp = st.query_params
+            qp["emp_id"] = emp_id.strip()
+            qp["role"] = role
+            st.rerun()
 
 
 def page_employee():
     token = st.session_state.get("auth_token")
     employee_id = st.session_state.get("auth_employee_id")
+    role = st.session_state.get("auth_role")
+
+    # Managers and HR don't take assessments — stop here, don't render survey
+    if not token and role in ("manager", "hr_admin", "system_admin"):
+        st.info(f"You're logged in as {role.replace('_', ' ').title()}. Use the sidebar to navigate.")
+        st.caption("The assessment is for employees only.")
+        if st.button(f"Go to {role.replace('_', ' ').title()} Dashboard"):
+            st.session_state.page_nav = {
+                "manager": "Manager",
+                "hr_admin": "HR Aggregate",
+                "system_admin": "HR Aggregate",
+            }.get(role, "Employee")
+            st.rerun()
+        return  # stops here immediately — survey below never renders
 
     if not token or not employee_id:
         # Demo mode: run the full employee UX flow locally (no backend needed).
@@ -760,20 +693,11 @@ def page_employee():
         # Use demo employee ID and defaults for all inputs.
         if "ux_demo_features" not in st.session_state:
             # First time: initialise demo features with sensible defaults
-            st.session_state.ux_demo_employee_id = "Demo"
-            st.session_state.ux_demo_seniority = 2
-            st.session_state.ux_demo_features = {
-                "tenure_days": 547.0,
-                "mental_fatigue_score": 5.0,
-                "resource_allocation": 5.0,
-                "wfh_setup": 1.0,
-                "company_type": 0.0,
-                "seniority_tier": 2.0,
-                "missing_ra": 0.0,
-                "missing_mfs": 0.0,
-                "tenure_fatigue": 5.0,
-                "tenure_workload": 5.0,
-            }
+            demo_id = employee_id or "Demo"
+            demo_feats = _get_demo_features(demo_id)
+            st.session_state.ux_demo_employee_id = demo_id
+            st.session_state.ux_demo_seniority = int(demo_feats["seniority_tier"])
+            st.session_state.ux_demo_features = demo_feats
 
         render_employee_ux(
             employee_id=st.session_state.ux_demo_employee_id,
@@ -825,7 +749,22 @@ def page_employee():
 def page_hr():
     token = st.session_state.get("auth_token")
     if not token:
-        st.warning("Sign in to view the HR dashboard.")
+        # Demo mode — render a mock HR dashboard with no backend needed
+        render_hr_view(
+            scores=[
+                {"risk_tier": tier, "burnout_probability": None}
+                for tier, count in (("low", 28), ("moderate", 18), ("high", 12), ("critical", 4))
+                for _ in range(count)
+            ],
+            teams=[
+                {"name": "Engineering", "member_count": 8, "high_critical_pct": 0.375, "consecutive_weeks_elevated": 2},
+                {"name": "Product", "member_count": 6, "high_critical_pct": 0.167, "consecutive_weeks_elevated": 0},
+                {"name": "Design", "member_count": 5, "high_critical_pct": 0.20, "consecutive_weeks_elevated": 1},
+            ],
+            exclusions={"on_leave": 2, "protected_process": 1, "grievance_cooldown": 0},
+            scoreable=62,
+            responded=52,
+        )
         return
     role = st.session_state.get("auth_role", "")
     if role not in ("hr_admin", "system_admin"):
@@ -893,7 +832,34 @@ def page_hr():
 def page_manager():
     token = st.session_state.get("auth_token")
     if not token:
-        st.warning("Sign in to access the Manager dashboard.")
+        # Demo mode — render a mock manager dashboard with no backend needed
+        render_manager_view(
+            team_id=1,
+            team_name="Engineering",
+            team_size=8,
+            suppressed=False,
+            suppression_reason=None,
+            visibility_locked=False,
+            cycles=[{
+                "cycle_type": "monthly",
+                "closed_at": "2026-05-01",
+                "tiers": {"low": 3, "moderate": 2, "high": 2, "critical": 1},
+            }],
+            tier_distribution={"low": 3, "moderate": 2, "high": 2, "critical": 1},
+            high_critical_pct=0.375,
+            consecutive_weeks_elevated=2,
+            top_factors=[
+                {"feature": "mental_fatigue_score", "avg_impact": 0.21, "direction": "increases"},
+                {"feature": "resource_allocation", "avg_impact": 0.15, "direction": "increases"},
+            ],
+            recommendations=[
+                "Workload negotiation guide",
+                "Energy management toolkit",
+            ],
+            worst_tier="high",
+            ort_ceiling=0.20,
+            team_trajectory_data=None,
+        )
         return
 
     try:
@@ -1018,6 +984,8 @@ def main():
                         "system_admin": "HR Aggregate",
                     }.get(actual_role, "Employee")
                     st.session_state.page_nav = default_page
+                    st.rerun()
+                    return  # stop current render; correct page shows on next render
                 except AuthExpiredError:
                     st.session_state.auth_token = None
                     st.session_state.auth_employee_id = None
@@ -1025,18 +993,38 @@ def main():
                     st.session_state.page_nav = "Employee"
                     st.session_state.ux_started = False
                     st.error("Session expired. Please sign in again.")
-                except ApiError as e:
-                    st.session_state.login_failed_attempts = failed + 1
-                    remaining = max(0, 5 - st.session_state.login_failed_attempts)
-                    msg = str(e)
-                    if remaining == 0:
-                        msg += " (locked out — too many attempts)"
-                    st.error(msg)
+                except ApiError:
+                    # No backend running — enter demo mode (no token needed for employee view)
+                    st.session_state.login_failed_attempts = 0
+                    st.session_state.auth_token = None  # demo mode: no backend
+                    st.session_state.auth_employee_id = emp_id
+                    st.session_state.auth_role = (
+                        role_param
+                        if role_param in ("employee", "manager", "hr_admin", "system_admin")
+                        else "employee"
+                    )
+                    # Pre-load demo features keyed to the actual employee ID for this session
+                    demo_feats = _get_demo_features(emp_id)
+                    st.session_state.ux_demo_employee_id = emp_id
+                    st.session_state.ux_demo_seniority = int(demo_feats["seniority_tier"])
+                    st.session_state.ux_demo_features = demo_feats
+                    st.session_state.ux_started = True  # ensure role routing fires next render
+                    actual_role = st.session_state.auth_role
+                    default_page = {
+                        "employee": "Employee",
+                        "manager": "Manager",
+                        "hr_admin": "HR Aggregate",
+                        "system_admin": "HR Aggregate",
+                    }.get(actual_role, "Employee")
+                    st.session_state.page_nav = default_page
+                    st.rerun()  # force clean rerender with new session state
+                    return  # stop current render; correct page shows on next render
                 except Exception as e:
                     st.error(f"Login error: {e}")
 
     # ── Authenticated sidebar view ──────────────────────────────────────────
-    if st.session_state.auth_token:
+    # Show for both real auth (token set) and demo mode (token None but role+emp_id set)
+    if st.session_state.auth_token or (st.session_state.auth_employee_id and st.session_state.auth_role):
         role_display_map = {
             "employee": "Employee",
             "manager": "Manager",
@@ -1047,25 +1035,30 @@ def main():
         role = st.session_state.auth_role
         role_label = role_display_map.get(role, role)
         name = st.session_state.auth_employee_id or "Unknown"
+        is_demo = st.session_state.auth_token is None
 
-        # Sidebar shown for manager and HR admin only — not for employee (mobile-first, single view)
-        if role not in ("employee",):
-            # Build nav links as HTML
+        # Sidebar with role guide — shown for all authenticated users
+        # Managers/HR in demo mode don't take assessments — skip "My Assessment" nav
+        if is_demo and role == "manager":
+            pages = [("Team Dashboard", "Manager")]
+        elif is_demo and role in ("hr_admin", "system_admin"):
+            pages = [("Org Overview", "HR Aggregate")]
+        else:
             pages = {
                 "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
                 "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
                 "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
             }.get(role, [])
 
-            current_page = st.session_state.page_nav
-            nav_html = ""
-            for label, page_name in pages:
-                active = current_page == page_name
-                cls = "sb-nav-active" if active else "sb-nav-btn"
-                nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
+        current_page = st.session_state.page_nav
+        nav_html = ""
+        for label, page_name in pages:
+            active = current_page == page_name
+            cls = "sb-nav-active" if active else "sb-nav-btn"
+            nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
 
-            with st.sidebar:
-                st.html(_sidebar_html_full(name, role_label, role, nav_html))
+        with st.sidebar:
+            st.html(_sidebar_html_full(name, role_label, role, nav_html))
 
         # Handle sign-out via query param
         if qp.get("signout") == "1":
@@ -1106,6 +1099,7 @@ def main():
         # Not logged in — show landing page (no sidebar)
         if not st.session_state.get("ux_started"):
             page_landing()
+            return  # don't fall through to page_employee on first render
         else:
             # Route based on the role selected in the form (not the employee quiz)
             auth_role = st.session_state.get("auth_role")
