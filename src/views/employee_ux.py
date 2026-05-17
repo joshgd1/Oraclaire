@@ -100,7 +100,9 @@ def _section_title(text: str):
 def _card_wrap(label: str, contents_fn, pastel_bg: str = None):
     """Render a labelled card with optional pastel background."""
     bg = pastel_bg or THEME["card_bg"]
+    # Pastel backgrounds are light → use dark text; dark backgrounds → use light text
     text_color = "#065f46" if pastel_bg else THEME["text"]
+    text_secondary = "#047857" if pastel_bg else THEME["text_secondary"]
     border_color = "#bbf7d0" if pastel_bg else THEME["border"]
     st.markdown(
         f'<div style="background:{bg};border:1px solid {border_color};'
@@ -110,10 +112,13 @@ def _card_wrap(label: str, contents_fn, pastel_bg: str = None):
     if label:
         st.markdown(
             f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
-            f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 10px 0">'
+            f'letter-spacing:0.08em;color:{text_secondary};margin:0 0 10px 0">'
             f"{label}</p>",
             unsafe_allow_html=True,
         )
+    # Pass text colors to content fn via session state so card content is readable
+    st.session_state._card_text_color = text_color
+    st.session_state._card_text_secondary = text_secondary
     contents_fn()
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -122,13 +127,15 @@ def _render_tier_badge(tier: str):
     """Colored badge showing tier name + plain-language signal label."""
     color = THEME.get(tier.lower(), "#888")
     signal = SIGNAL_LABELS.get(tier.lower(), "")
+    # Use stored card text color if available (for pastel backgrounds), else secondary
+    tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
     st.markdown(
         f'<span style="display:inline-flex;align-items:center;gap:12px;'
         f'padding:10px 18px;border-radius:10px;background:{color}18;'
         f'border:1px solid {color}33;font-size:0.85rem;font-weight:700;'
         f'text-transform:uppercase;letter-spacing:0.05em;color:{color}">'
         f"{tier.upper()}</span>"
-        f'&nbsp;<span style="color:{THEME["text_secondary"]};font-size:0.9rem;font-weight:400">'
+        f'&nbsp;<span style="color:{tcs};font-size:0.9rem;font-weight:400">'
         f"{signal}</span>",
         unsafe_allow_html=True,
     )
@@ -585,13 +592,15 @@ def _render_dashboard(
     # ── Card 1 — How you are doing ─────────────────────────────────────
     def _card1():
         _render_tier_badge(tier)
+        tc = st.session_state.get("_card_text_color", THEME["text"])
+        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
         st.markdown(
-            f'<p style="color:{THEME["text"]};font-size:1.05rem;'
+            f'<p style="color:{tc};font-size:1.05rem;'
             f'margin:8px 0 0 0;line-height:1.6">{label}</p>',
             unsafe_allow_html=True,
         )
         st.markdown(
-            f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem;margin:8px 0 0 0;'
+            f'<p style="color:{tcs};font-size:0.9rem;margin:8px 0 0 0;'
             f'line-height:1.5">{description}</p>',
             unsafe_allow_html=True,
         )
@@ -605,9 +614,10 @@ def _render_dashboard(
     ][:3]
 
     def _card2():
+        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
         if not factors:
             st.markdown(
-                f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+                f'<p style="color:{tcs};font-size:0.9rem">'
                 f"Not enough data yet to show what's affecting this.</p>",
                 unsafe_allow_html=True,
             )
@@ -679,15 +689,20 @@ def _render_dashboard(
     rec_label = FEATURE_LABELS.get(rec_feature, rec_feature or "your responses")
 
     def _card4():
+        tcs = st.session_state.get("_card_text_secondary", THEME["text_secondary"])
         if not resources:
             st.markdown(
-                f'<p style="color:{THEME["text_secondary"]};font-size:0.9rem">'
+                f'<p style="color:{tcs};font-size:0.9rem">'
                 f"No specific suggestions yet. Speaking with your manager or HR is always a good step.</p>",
                 unsafe_allow_html=True,
             )
             return
 
-        st.caption(f"Based on: {rec_label}")
+        st.markdown(
+            f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 8px 0">'
+            f"Based on: {rec_label}</p>",
+            unsafe_allow_html=True,
+        )
 
         for resource in resources[:3]:
             st.markdown(
