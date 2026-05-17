@@ -1,0 +1,4 @@
+employee_id,seniority_tier,team_name,department_name,excluded,exclusion_category,notes
+demo_001,senior,Platform,Engineering,,,
+demo_002,junior,Platform,Engineering,,,
+demo_003,senior,Product,Design,,,
