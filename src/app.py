@@ -1171,7 +1171,8 @@ def main():
                     st.error(f"Login error: {e}")
 
     # ── Authenticated sidebar view ──────────────────────────────────────────
-    if st.session_state.auth_token:
+    # Show for both real auth (token set) and demo mode (token None but role+emp_id set)
+    if st.session_state.auth_token or (st.session_state.auth_employee_id and st.session_state.auth_role):
         role_display_map = {
             "employee": "Employee",
             "manager": "Manager",
