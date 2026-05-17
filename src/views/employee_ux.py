@@ -703,11 +703,23 @@ def _render_dashboard(
 
     _collapsible_card("💡 What is affecting this", "factors")
     if not factors:
-        st.markdown(
-            f'<p style="color:{tcs};font-size:0.9rem">'
-            f"Not enough data yet to show what's affecting this.</p>",
-            unsafe_allow_html=True,
-        )
+        # Show general factors when no SHAP data available
+        typical_factors = [
+            ("Your recent energy levels", "↗", "Energy levels are a key driver of how you're feeling day to day."),
+            ("Your current workload demands", "↑", "High workload over sustained periods is a common source of strain."),
+            ("Your time in this role", "→", "How long you've been in the role can affect your sense of pace and renewal."),
+        ]
+        for feat, arrow, sentence in typical_factors:
+            color = "#10b981" if arrow == "↗" else "#f59e0b" if arrow == "→" else "#ef4444"
+            st.markdown(
+                f'<div style="display:flex;align-items:flex-start;gap:10px;'
+                f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
+                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
+                f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                f"<strong>{feat}:</strong> {sentence}</p></div>",
+                unsafe_allow_html=True,
+            )
+        st.caption("Complete a full assessment to see your personalised factors.")
     else:
         for item in factors:
             feat = item.get("feature", "")
@@ -762,11 +774,23 @@ def _render_dashboard(
 
     _collapsible_card("🌱 What might help", "resources")
     if not resources:
-        st.markdown(
-            f'<p style="color:{tcs};font-size:0.9rem">'
-            f"No specific suggestions yet. Speaking with your manager or HR is always a good step.</p>",
-            unsafe_allow_html=True,
-        )
+        # Show general wellbeing steps when no SHAP-matched resources available
+        general_steps = [
+            ("Talk to your manager", "Share how you're feeling — they can help adjust workload or priorities."),
+            ("Connect with your team", "Social support is one of the strongest buffers against burnout."),
+            ("Take regular breaks", "Short breaks throughout the day help sustain energy and focus."),
+        ]
+        for title, desc in general_steps:
+            st.markdown(
+                f'<div style="padding:12px 14px;background:{THEME["bg"]};'
+                f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
+                f'border-radius:10px;margin-bottom:8px">'
+                f'<p style="margin:0 0 6px 0;color:{THEME["text"]};'
+                f'font-weight:600;font-size:0.88rem;line-height:1.4">{title}</p>'
+                f'<p style="margin:0;color:{tcs};font-size:0.82rem;line-height:1.4">{desc}</p></div>',
+                unsafe_allow_html=True,
+            )
+        st.caption("These steps are generally helpful for everyone.")
     else:
         st.markdown(
             f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 10px 0">'

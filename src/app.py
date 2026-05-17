@@ -481,6 +481,43 @@ def _tier_badge_html(tier: str, probability: float) -> str:
     )
 
 
+def _get_demo_features(emp_id: str) -> dict:
+    """Generate deterministic demo features from employee ID.
+
+    Each employee ID produces consistent but distinct features,
+    so login 1, 2, 3 each show different risk profiles.
+    """
+    # Deterministic hash from employee ID string
+    seed = sum(ord(c) * (i + 1) for i, c in enumerate(emp_id))
+
+    # Map seed to distinct but plausible feature ranges
+    # Mental fatigue: 3-8 (higher = more fatigued = higher risk)
+    mental_fatigue = 3.0 + (seed % 50) / 10.0
+    # Resource allocation: 4-9 (higher = more overloaded = higher risk)
+    resource_alloc = 4.0 + ((seed * 7) % 50) / 10.0
+    # Tenure days: 90-1200 (longer tenure = lower risk generally)
+    tenure = 90.0 + (seed * 13) % 1110.0
+    # Work setup: 0=wfh, 1=hybrid, 2=office
+    wfh_setup = float((seed * 3) % 3)
+    # Seniority: 1-4
+    seniority = 1.0 + float((seed * 5) % 4)
+    # Company type: 0-3
+    company_type = float((seed * 11) % 4)
+
+    return {
+        "tenure_days": round(tenure, 1),
+        "mental_fatigue_score": round(mental_fatigue, 1),
+        "resource_allocation": round(resource_alloc, 1),
+        "wfh_setup": round(wfh_setup, 1),
+        "company_type": round(company_type, 1),
+        "seniority_tier": round(seniority, 1),
+        "missing_ra": 0.0,
+        "missing_mfs": 0.0,
+        "tenure_fatigue": round(mental_fatigue, 1),
+        "tenure_workload": round(resource_alloc, 1),
+    }
+
+
 def _clear_auth():
     """Clear auth session state after token expiry or sign-out."""
     for key in ["auth_token", "auth_employee_id", "auth_role"]:
@@ -737,6 +774,21 @@ def page_landing():
 def page_employee():
     token = st.session_state.get("auth_token")
     employee_id = st.session_state.get("auth_employee_id")
+    role = st.session_state.get("auth_role")
+
+    # Managers and HR don't take assessments — redirect to their dashboard
+    if not token and role in ("manager", "hr_admin", "system_admin"):
+        st.info(f"You're logged in as {role.replace('_', ' ').title()}. Use the sidebar to view your dashboard.")
+        st.caption("The assessment is for employees only.")
+        default_page = {
+            "manager": "Manager",
+            "hr_admin": "HR Aggregate",
+            "system_admin": "HR Aggregate",
+        }.get(role, "Employee")
+        if st.button(f"Go to {role.replace('_', ' ').title()} Dashboard"):
+            st.session_state.page_nav = default_page
+            st.rerun()
+        return
 
     if not token or not employee_id:
         # Demo mode: run the full employee UX flow locally (no backend needed).
@@ -744,20 +796,11 @@ def page_employee():
         # Use demo employee ID and defaults for all inputs.
         if "ux_demo_features" not in st.session_state:
             # First time: initialise demo features with sensible defaults
-            st.session_state.ux_demo_employee_id = "Demo"
-            st.session_state.ux_demo_seniority = 2
-            st.session_state.ux_demo_features = {
-                "tenure_days": 547.0,
-                "mental_fatigue_score": 5.0,
-                "resource_allocation": 5.0,
-                "wfh_setup": 1.0,
-                "company_type": 0.0,
-                "seniority_tier": 2.0,
-                "missing_ra": 0.0,
-                "missing_mfs": 0.0,
-                "tenure_fatigue": 5.0,
-                "tenure_workload": 5.0,
-            }
+            demo_id = employee_id or "Demo"
+            demo_feats = _get_demo_features(demo_id)
+            st.session_state.ux_demo_employee_id = demo_id
+            st.session_state.ux_demo_seniority = int(demo_feats["seniority_tier"])
+            st.session_state.ux_demo_features = demo_feats
 
         render_employee_ux(
             employee_id=st.session_state.ux_demo_employee_id,
@@ -1062,20 +1105,10 @@ def main():
                         else "employee"
                     )
                     # Pre-load demo features keyed to the actual employee ID for this session
+                    demo_feats = _get_demo_features(emp_id)
                     st.session_state.ux_demo_employee_id = emp_id
-                    st.session_state.ux_demo_seniority = 2
-                    st.session_state.ux_demo_features = {
-                        "tenure_days": 547.0,
-                        "mental_fatigue_score": 5.0,
-                        "resource_allocation": 5.0,
-                        "wfh_setup": 1.0,
-                        "company_type": 0.0,
-                        "seniority_tier": 2.0,
-                        "missing_ra": 0.0,
-                        "missing_mfs": 0.0,
-                        "tenure_fatigue": 5.0,
-                        "tenure_workload": 5.0,
-                    }
+                    st.session_state.ux_demo_seniority = int(demo_feats["seniority_tier"])
+                    st.session_state.ux_demo_features = demo_feats
                     st.session_state.ux_started = True  # ensure role routing fires next render
                     actual_role = st.session_state.auth_role
                     default_page = {
@@ -1100,13 +1133,20 @@ def main():
         role = st.session_state.auth_role
         role_label = role_display_map.get(role, role)
         name = st.session_state.auth_employee_id or "Unknown"
+        is_demo = st.session_state.auth_token is None
 
         # Sidebar with role guide — shown for all authenticated users
-        pages = {
-            "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
-            "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-            "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
-        }.get(role, [])
+        # Managers/HR in demo mode don't take assessments — skip "My Assessment" nav
+        if is_demo and role == "manager":
+            pages = [("Team Dashboard", "Manager")]
+        elif is_demo and role in ("hr_admin", "system_admin"):
+            pages = [("Org Overview", "HR Aggregate")]
+        else:
+            pages = {
+                "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
+                "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+                "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+            }.get(role, [])
 
         current_page = st.session_state.page_nav
         nav_html = ""
