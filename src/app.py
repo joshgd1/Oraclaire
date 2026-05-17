@@ -765,6 +765,55 @@ def page_landing():
                     </div>
                     <button class="btn-primary" type="submit">Sign in</button>
                 </form>
+
+                <div style="margin-top:28px;padding-top:20px;border-top:1px solid #e5e7eb">
+                    <p style="font-family:'Inter',sans-serif;font-size:0.75rem;font-weight:600;
+                              color:#9ca3af;margin:0 0 12px 0;letter-spacing:0.05em;text-transform:uppercase">
+                        Quick demo access
+                    </p>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                        <a href="?emp_id=1&role=employee"
+                           style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                  background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;
+                                  text-decoration:none;font-family:'Inter',sans-serif;
+                                  font-size:0.82rem;font-weight:500;color:#065f46">
+                            <span>👤</span>
+                            <span><strong>Employee 1</strong> — high risk demo</span>
+                        </a>
+                        <a href="?emp_id=2&role=employee"
+                           style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                  background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;
+                                  text-decoration:none;font-family:'Inter',sans-serif;
+                                  font-size:0.82rem;font-weight:500;color:#065f46">
+                            <span>👤</span>
+                            <span><strong>Employee 2</strong> — low risk demo</span>
+                        </a>
+                        <a href="?emp_id=3&role=employee"
+                           style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                  background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;
+                                  text-decoration:none;font-family:'Inter',sans-serif;
+                                  font-size:0.82rem;font-weight:500;color:#065f46">
+                            <span>👤</span>
+                            <span><strong>Employee 3</strong> — moderate risk demo</span>
+                        </a>
+                        <a href="?emp_id=manager1&role=manager"
+                           style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                  background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;
+                                  text-decoration:none;font-family:'Inter',sans-serif;
+                                  font-size:0.82rem;font-weight:500;color:#6b21a8">
+                            <span>📊</span>
+                            <span><strong>Manager</strong> — team dashboard demo</span>
+                        </a>
+                        <a href="?emp_id=hr1&role=hr_admin"
+                           style="display:flex;align-items:center;gap:10px;padding:9px 12px;
+                                  background:#fffbeb;border:1px solid #fef08a;border-radius:8px;
+                                  text-decoration:none;font-family:'Inter',sans-serif;
+                                  font-size:0.82rem;font-weight:500;color:#92400e">
+                            <span>📋</span>
+                            <span><strong>HR Admin</strong> — org overview demo</span>
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
         """
