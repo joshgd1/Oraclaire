@@ -1198,6 +1198,7 @@ def main():
         # Not logged in — show landing page (no sidebar)
         if not st.session_state.get("ux_started"):
             page_landing()
+            return  # don't fall through to page_employee on first render
         else:
             # Route based on the role selected in the form (not the employee quiz)
             auth_role = st.session_state.get("auth_role")
