@@ -10,6 +10,11 @@ from collections import Counter
 import streamlit as st
 
 from src.config import ORT_CEILING, TIER_COLORS, TIER_ORDER
+from src.model.services.coach_feedback import (
+    get_worked_recommendations,
+    get_my_feedback,
+    submit_feedback,
+)
 
 
 TIER_THEME_MGR = {
@@ -101,8 +106,62 @@ def render_trend_chart(cycles: list[dict]):
         st.caption(f"{row['cycle']}: {row['hc_pct']:.0%} High+Critical")
 
 
-def render_recommendations(top_factors: list[dict], resources: list[str], worst_tier: str):
-    """Render SHAP-matched action recommendations."""
+def _render_resource_card(resource: str, key_suffix: str):
+    """Render a single resource card with coaching feedback widget."""
+    # Check if manager already gave feedback for this resource
+    my_feedback = get_my_feedback(st.session_state.get("auth_employee_id", ""))
+    prior = next((fb for fb in my_feedback if fb.recommendation == resource), None)
+
+    st.markdown(
+        f'<div style="padding:12px 14px;background:{THEME_MGR["bg"]};border-radius:8px;'
+        f'border-left:3px solid #0d7377;margin-bottom:10px;color:{THEME_MGR["text"]}">'
+        f"<strong>{resource}</strong></div>",
+        unsafe_allow_html=True,
+    )
+
+    if prior:
+        rating_colors = {"helped": "#10b981", "neutral": "#f59e0b", "did_not_help": "#ef4444"}
+        color = rating_colors.get(prior.rating, "#9ca3af")
+        icons = {"helped": "✓", "neutral": "~", "did_not_help": "✗"}
+        st.markdown(
+            f'<p style="color:{color};font-size:0.82rem;margin:0 0 8px 0">'
+            f'{icons.get(prior.rating, "?")} You rated this: <strong>{prior.rating.replace("_", " ")}</strong></p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        col_h, col_n = st.columns([1, 1])
+        with col_h:
+            if st.button("✓ Helped", key=f"fb_helped_{key_suffix}", use_container_width=True):
+                submit_feedback(
+                    recommendation=resource,
+                    rating="helped",
+                    notes="",
+                    manager_id=st.session_state.get("auth_employee_id", "demo"),
+                    team_size=8,
+                    ort_pct=st.session_state.get("_mgr_ort_pct", 0.0),
+                )
+                st.rerun()
+        with col_n:
+            if st.button("✗ Didn't help", key=f"fb_nothelp_{key_suffix}", use_container_width=True):
+                submit_feedback(
+                    recommendation=resource,
+                    rating="did_not_help",
+                    notes="",
+                    manager_id=st.session_state.get("auth_employee_id", "demo"),
+                    team_size=8,
+                    ort_pct=st.session_state.get("_mgr_ort_pct", 0.0),
+                )
+                st.rerun()
+
+
+def render_recommendations(
+    top_factors: list[dict],
+    resources: list[str],
+    worst_tier: str,
+    ort_pct: float = 0.0,
+    team_size: int = 8,
+):
+    """Render SHAP-matched action recommendations with coaching feedback."""
     st.markdown("#### Recommended actions")
 
     if not top_factors and not resources:
@@ -130,24 +189,54 @@ def render_recommendations(top_factors: list[dict], resources: list[str], worst_
             )
 
     if resources:
-        st.markdown("**Support resources:**")
+        st.markdown("**Support resources — did these help?**")
         tier_prefix = {
             "moderate": "Self-guided:",
             "high": "Professional support pathways:",
             "critical": "Urgent — seek professional support:",
         }
         st.caption(tier_prefix.get(worst_tier, "Resources:"))
-        for resource in resources:
-            st.markdown(
-                f'<div style="padding:8px 12px;background:{THEME_MGR["bg"]};border-radius:6px;'
-                f'border-left:3px solid #0d7377;margin-bottom:6px;color:{THEME_MGR["text"]}">'
-                f"{resource}</div>",
-                unsafe_allow_html=True,
-            )
+        for idx, resource in enumerate(resources):
+            _render_resource_card(resource, f"{worst_tier}_{idx}")
     else:
         st.caption(
             "No specific resource recommendations based on current team SHAP factors."
         )
+
+
+def render_worked_panel(ort_pct: float, team_size: int):
+    """Show what interventions worked for similar teams."""
+    worked = get_worked_recommendations(ort_pct=ort_pct, team_size=team_size, top_n=5)
+
+    st.markdown("#### What worked for similar teams")
+
+    if not worked:
+        st.info(
+            "No feedback from other managers yet. "
+            "Try a recommendation above and rate whether it helped — "
+            "your feedback helps the whole organisation learn."
+        )
+        return
+
+    for w in worked:
+        pct = w.helpful_pct * 100
+        bar_color = "#10b981" if pct >= 60 else ("#f59e0b" if pct >= 40 else "#ef4444")
+        stars = "★" * max(1, round(w.avg_rating + 2)) + "☆" * max(0, 4 - round(w.avg_rating + 2))
+        st.markdown(
+            f'<div style="padding:12px 14px;background:{THEME_MGR["bg"]};border-radius:8px;'
+            f'border-left:3px solid {bar_color};margin-bottom:10px">'
+            f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+            f'<strong style="color:{THEME_MGR["text"]};font-size:0.88rem">{w.recommendation}</strong>'
+            f'<span style="color:#f59e0b;font-size:0.85rem">{stars}</span></div>'
+            f'<div style="display:flex;align-items:center;gap:10px">'
+            f'<div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px">'
+            f'<div style="height:100%;width:{int(pct)}%;background:{bar_color};border-radius:3px"></div></div>'
+            f'<span style="color:{THEME_MGR["text_secondary"]};font-size:0.78rem;white-space:nowrap">'
+            f'{w.helpful_count}/{w.total_count} ({pct:.0f}%)</span></div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.caption("Based on feedback from managers with similar team risk and size.")
 
 
 def render_team_trajectory(
@@ -280,6 +369,10 @@ def render_manager_view(
     team_trajectory_data: dict | None = None,
 ):
     """Render the full manager dashboard for one team."""
+    # Store ORT pct for use in coaching feedback widget
+    st.session_state["_mgr_ort_pct"] = high_critical_pct or 0.0
+    st.session_state["_mgr_team_size"] = team_size
+
     render_header(team_name)
 
     if suppressed:
@@ -303,10 +396,14 @@ def render_manager_view(
         lambda: render_tier_distribution(cycles, current_tiers),
         lambda: render_trend_chart(cycles),
         lambda: render_ort_status(high_critical_pct, consecutive_weeks_elevated, team_size, ort_ceiling),
-        lambda: render_recommendations(top_factors, recommendations, worst_tier),
+        lambda: render_recommendations(top_factors, recommendations, worst_tier,
+                                       ort_pct=high_critical_pct or 0.0, team_size=team_size),
     ]
     if not suppressed and not visibility_locked:
         sections.append(lambda: render_team_trajectory(team_trajectory_data, team_id))
+
+    # Coaching network — always shown
+    sections.append(lambda: render_worked_panel(ort_pct=high_critical_pct or 0.0, team_size=team_size))
 
     for section_fn in sections:
         st.markdown(

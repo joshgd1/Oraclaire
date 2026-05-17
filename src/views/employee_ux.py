@@ -22,6 +22,7 @@ import streamlit as st
 
 from src.config import FEATURE_LABELS, RESOURCES
 from src.model.serve import score_employee
+from src.model.services.peer_benchmark import get_peer_benchmark
 
 # ── Theme ────────────────────────────────────────────────────────────────────
 
@@ -79,12 +80,15 @@ PRIVACY_NOTICE = (
 
 def _privacy_banner():
     """Full-width banner at the top of the dashboard — always visible, not dismissible."""
-    st.markdown(
-        f'<div style="background:#f0fdfa;border:1px solid #99f6e4;'
-        'border-radius:10px;padding:12px 20px;margin-bottom:20px;width:100%">'
-        f'<p style="margin:0;color:#065f46;font-size:0.95rem;font-weight:500">'
-        f"{PRIVACY_NOTICE}</p></div>",
-        unsafe_allow_html=True,
+    st.html(
+        f"""
+        <div style="background:linear-gradient(135deg,#f0fdfa 0%,#ecfdf5 100%);"
+        f"border:1px solid #6ee7b7;border-radius:12px;padding:14px 20px;margin-bottom:20px;">
+        f"<div style="display:flex;align-items:center;gap:10px;">
+        f"<span style="font-size:1.1rem">🔒</span>"
+        f"<p style="margin:0;color:#065f46;font-size:0.95rem;font-weight:500;line-height:1.4;">"
+        f"{PRIVACY_NOTICE}</p></div></div>
+        """
     )
 
 
@@ -201,10 +205,39 @@ def _render_tier_badge(tier: str):
 
 # ── Pulse history ──────────────────────────────────────────────────────────
 
-def _load_pulse_history(employee_id: str) -> list[dict]:
-    """Load up to 5 weeks of pulse history for an employee.
+def _save_pulse(
+    employee_id: str,
+    pulse: int,
+    tier: str,
+    probability: float | None = None,
+) -> None:
+    """Append a completed pulse/check-in to the audit log for longitudinal tracking."""
+    from datetime import date
+    pulse_path = Path("data/audit/pulse.jsonl")
+    pulse_path.parent.mkdir(parents=True, exist_ok=True)
 
-    Returns list of dicts: [{week_label: str, pulse: int}, ...]
+    today = date.today()
+    week_label = f"Week {today.isocalendar()[1]}, {today.year}"
+
+    record = {
+        "employee_id": str(employee_id),
+        "date": str(today),
+        "week_label": week_label,
+        "pulse": pulse,
+        "tier": tier,
+        "probability": probability,
+    }
+    try:
+        with open(pulse_path, "a") as fh:
+            fh.write(json.dumps(record) + "\n")
+    except (IOError, OSError):
+        pass  # Non-fatal in demo mode
+
+
+def _load_pulse_history(employee_id: str) -> list[dict]:
+    """Load up to 12 weeks of pulse history for an employee.
+
+    Returns list of dicts: [{week_label, pulse, tier, date, probability}, ...]
     Ordered oldest → newest.
     """
     pulse_path = Path("data/audit/pulse.jsonl")
@@ -212,6 +245,7 @@ def _load_pulse_history(employee_id: str) -> list[dict]:
         return []
 
     history = []
+    seen_dates = set()
     try:
         with open(pulse_path) as fh:
             for line in fh:
@@ -224,17 +258,23 @@ def _load_pulse_history(employee_id: str) -> list[dict]:
                     continue
                 if str(record.get("employee_id", "")) != str(employee_id):
                     continue
+                date_str = record.get("date", "")
+                # Deduplicate by date — keep the most recent entry per day
+                if date_str in seen_dates:
+                    continue
+                seen_dates.add(date_str)
                 history.append({
                     "week_label": record.get("week_label", "Week"),
                     "pulse": record.get("pulse"),
-                    "date": record.get("date", ""),
+                    "tier": record.get("tier"),
+                    "date": date_str,
+                    "probability": record.get("probability"),
                 })
     except (IOError, OSError):
         return []
 
-    # Sort oldest first; keep last 5
     history.sort(key=lambda r: r.get("date", ""))
-    return history[-5:]
+    return history[-12:]  # last 12 weeks
 
 
 # ── Assessment questions ─────────────────────────────────────────────────────
@@ -581,9 +621,8 @@ def _render_dimensions_chart(radar_values: dict, tier: str):
 
 
 def _render_trend_chart(history: list[dict]):
-    """Render trend sparkline from pulse history, or a placeholder if empty."""
+    """Render trend chart from pulse history using Plotly, or a placeholder if empty."""
     if not history:
-        # Empty state — design: icon + specific message + secondary + CTA hint
         st.markdown(
             '<div style="background:#f0fdfa;border:1px dashed #99f6e4;'
             'border-radius:12px;padding:28px 24px;text-align:center;margin-bottom:8px">'
@@ -597,7 +636,6 @@ def _render_trend_chart(history: list[dict]):
         )
         return
 
-    # Word labels for y-axis
     PULSE_WORDS = {
         1: "Really rough",
         2: "Tough",
@@ -606,31 +644,160 @@ def _render_trend_chart(history: list[dict]):
         5: "Great",
     }
 
-    # Build chart data: week labels → word labels, no numbers
-    chart_data = {}
+    TIER_CHART_COLORS = {
+        "low": "#10b981",
+        "moderate": "#f59e0b",
+        "high": "#f97316",
+        "critical": "#ef4444",
+    }
+
+    # Build chart data — each point colored by its tier
+    labels = []
+    pulses = []
+    tier_colors = []
+    tiers = []
     for i, entry in enumerate(history):
         label = entry.get("week_label", f"Week {i+1}")
         pulse = entry.get("pulse")
         if pulse is None:
             continue
-        word = PULSE_WORDS.get(pulse, str(pulse))
-        chart_data[label] = word
+        tier = entry.get("tier", "moderate")
+        labels.append(label)
+        pulses.append(pulse)
+        tiers.append(tier)
+        tier_colors.append(TIER_CHART_COLORS.get(tier.lower(), "#0d7377"))
 
-    if chart_data:
-        st.line_chart(chart_data, height=140)
+    if not pulses:
+        return
 
-    # Direction sentence
+    # Richer trajectory analysis
     if len(history) >= 2:
-        first = history[0].get("pulse", 3)
-        last = history[-1].get("pulse", 3)
-        delta = last - first
+        first_pulse = history[0].get("pulse", 3)
+        last_pulse = history[-1].get("pulse", 3)
+        delta = last_pulse - first_pulse
+        first_tier = history[0].get("tier", "moderate")
+        last_tier = history[-1].get("tier", "moderate")
+
         if delta <= -1:
             trend_text = "You're feeling better than you were."
+            trend_color = "#10b981"
+            trend_icon = "↓"
         elif delta >= 1:
             trend_text = "Things have been harder lately."
+            trend_color = "#ef4444"
+            trend_icon = "↑"
         else:
             trend_text = "You're holding steady."
-        st.caption(trend_text)
+            trend_color = "#f59e0b"
+            trend_icon = "→"
+
+        # Compare first vs last tier
+        tier_change = ""
+        if first_tier != last_tier:
+            tier_change = f" · Tier shifted {first_tier} → {last_tier}"
+
+        trend_sub = f"{abs(delta):.1f} points this period{tier_change}"
+    else:
+        trend_text = ""
+        trend_color = "#9ca3af"
+        trend_icon = ""
+        trend_sub = ""
+
+    # Create Plotly chart with tier-colored markers and connecting line
+    fig = go.Figure()
+
+    # Add a subtle connecting line
+    fig.add_trace(go.Scatter(
+        x=list(range(len(pulses))),
+        y=pulses,
+        mode="lines",
+        line=dict(color="rgba(13,115,119,0.3)", width=2, dash="solid"),
+        hoverinfo="skip",
+        showlegend=False,
+    ))
+
+    # Add colored markers — one trace per tier group for legend
+    tier_trace_data = {}
+    for i, (pulse, tier, color) in enumerate(zip(pulses, tiers, tier_colors)):
+        if tier not in tier_trace_data:
+            tier_trace_data[tier] = {"x": [], "y": [], "c": [], "t": []}
+        tier_trace_data[tier]["x"].append(i)
+        tier_trace_data[tier]["y"].append(pulse)
+        tier_trace_data[tier]["c"].append(color)
+        tier_trace_data[tier]["t"].append(PULSE_WORDS.get(pulse, str(pulse)))
+
+    for tier, data in tier_trace_data.items():
+        tier_label = tier.title()
+        fig.add_trace(go.Scatter(
+            x=data["x"],
+            y=data["y"],
+            mode="markers",
+            marker=dict(
+                size=12,
+                color=data["c"],
+                symbol="circle",
+                line=dict(width=2, color="rgba(255,255,255,0.5)"),
+            ),
+            text=[f"{t} — {tier_label}" for t in data["t"]],
+            hovertemplate="<b>%{text}</b><br>Week %{x+1}<extra></extra>",
+            name=tier_label,
+            showlegend=True,
+        ))
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="#9ca3af", size=10),
+            bgcolor="rgba(0,0,0,0)",
+            borderwidth=0,
+        ),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=200,
+        xaxis=dict(
+            showticklabels=True,
+            ticktext=labels,
+            tickvals=list(range(len(labels))),
+            showgrid=False,
+            zeroline=False,
+            color="#9ca3af",
+            tickangle=-30,
+            tickfont=dict(size=9),
+        ),
+        yaxis=dict(
+            range=[0.5, 5.5],
+            showgrid=True,
+            gridcolor="rgba(156,163,175,0.15)",
+            gridwidth=1,
+            zeroline=False,
+            showticklabels=False,
+            color="#9ca3af",
+        ),
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Trajectory summary bar
+    if trend_text:
+        delta_str = f"+{delta:.1f}" if delta > 0 else f"{delta:.1f}"
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;'
+            f'background:{trend_color}18;border:1px solid {trend_color}44;'
+            f'border-radius:10px;margin-bottom:8px">'
+            f'<span style="font-size:1.1rem;font-weight:800;color:{trend_color}">{trend_icon}</span>'
+            f'<div>'
+            f'<p style="margin:0;color:{trend_color};font-size:0.88rem;font-weight:700;'
+            f'line-height:1.3">{trend_text}</p>'
+            f'<p style="margin:2px 0 0 0;color:#9ca3af;font-size:0.78rem;line-height:1.3">'
+            f'{trend_sub} · Δ{delta_str} points</p>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
 
 
 def _render_dashboard(
@@ -641,6 +808,8 @@ def _render_dashboard(
     pulse_history: list[dict],
     top_feature: str,
     ux_answers: dict,
+    features: dict | None = None,
+    seniority_tier: int | None = None,
 ):
     """Single dashboard with 4 cards + privacy banner at top."""
     tier_lower = tier.lower()
@@ -705,21 +874,22 @@ def _render_dashboard(
     if not factors:
         # Show general factors when no SHAP data available
         typical_factors = [
-            ("Your recent energy levels", "↗", "Energy levels are a key driver of how you're feeling day to day."),
-            ("Your current workload demands", "↑", "High workload over sustained periods is a common source of strain."),
-            ("Your time in this role", "→", "How long you've been in the role can affect your sense of pace and renewal."),
+            ("Your recent energy levels", "↑", "#ef4444", "Energy levels are a key driver of how you're feeling day to day."),
+            ("Your current workload demands", "↑", "#f97316", "High workload over sustained periods is a common source of strain."),
+            ("Your time in this role", "→", "#f59e0b", "How long you've been in the role can affect your sense of pace and renewal."),
         ]
-        for feat, arrow, sentence in typical_factors:
-            color = "#10b981" if arrow == "↗" else "#f59e0b" if arrow == "→" else "#ef4444"
+        for feat, arrow, color, sentence in typical_factors:
             st.markdown(
-                f'<div style="display:flex;align-items:flex-start;gap:10px;'
-                f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
-                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
-                f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
-                f"<strong>{feat}:</strong> {sentence}</p></div>",
+                f'<div style="display:flex;align-items:flex-start;gap:12px;'
+                f'padding:12px 14px;background:rgba(0,0,0,0.04);border-radius:10px;margin-bottom:8px">'
+                f'<div style="width:32px;height:32px;border-radius:8px;background:{color}18;'
+                f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                f'<span style="color:{color};font-size:0.9rem">{arrow}</span></div>'
+                f'<div><p style="margin:0 0 2px 0;color:{tc};font-size:0.9rem;font-weight:600;line-height:1.3">{feat}</p>'
+                f'<p style="margin:0;color:{tcs};font-size:0.82rem;line-height:1.4">{sentence}</p></div></div>',
                 unsafe_allow_html=True,
             )
-        st.caption("Complete a full assessment to see your personalised factors.")
+        st.markdown(f'<p style="color:{tcs};font-size:0.78rem;margin:4px 0 0 0">Complete a full assessment to see your personalised factors.</p>', unsafe_allow_html=True)
     else:
         for item in factors:
             feat = item.get("feature", "")
@@ -728,15 +898,17 @@ def _render_dashboard(
             arrow = "↑" if direction == "increases" else "→"
             sentence = _build_factor_sentence(feat, direction == "increases")
             st.markdown(
-                f'<div style="display:flex;align-items:flex-start;gap:10px;'
-                f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
-                f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
-                f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                f'<div style="display:flex;align-items:flex-start;gap:12px;'
+                f'padding:12px 14px;background:rgba(0,0,0,0.04);border-radius:10px;margin-bottom:8px">'
+                f'<div style="width:32px;height:32px;border-radius:8px;background:{color}18;'
+                f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                f'<span style="color:{color};font-size:0.9rem">{arrow}</span></div>'
+                f'<p style="margin:0;color:{tc};font-size:0.88rem;line-height:1.4">'
                 f"{sentence}</p></div>",
                 unsafe_allow_html=True,
             )
         if len(all_factors) > 3:
-            st.markdown(f"**+ {len(all_factors) - 3} more factors**")
+            st.markdown(f'<p style="color:{tcs};font-size:0.8rem;margin:4px 0 0 0">+ {len(all_factors) - 3} more factors</p>', unsafe_allow_html=True)
             for item in all_factors[3:]:
                 feat = item.get("feature", "")
                 direction = item.get("direction", "")
@@ -744,10 +916,12 @@ def _render_dashboard(
                 arrow = "↑" if direction == "increases" else "→"
                 sentence = _build_factor_sentence(feat, direction == "increases")
                 st.markdown(
-                    f'<div style="display:flex;align-items:flex-start;gap:10px;'
-                    f'padding:10px 12px;background:{THEME["bg"]};border-radius:8px;margin-bottom:8px">'
-                    f'<span style="color:{color};font-size:1rem;flex-shrink:0">{arrow}</span>'
-                    f'<p style="margin:0;color:{THEME["text"]};font-size:0.88rem;line-height:1.4">'
+                    f'<div style="display:flex;align-items:flex-start;gap:12px;'
+                    f'padding:12px 14px;background:rgba(0,0,0,0.04);border-radius:10px;margin-bottom:8px">'
+                    f'<div style="width:32px;height:32px;border-radius:8px;background:{color}18;'
+                    f'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
+                    f'<span style="color:{color};font-size:0.9rem">{arrow}</span></div>'
+                    f'<p style="margin:0;color:{tc};font-size:0.88rem;line-height:1.4">'
                     f"{sentence}</p></div>",
                     unsafe_allow_html=True,
                 )
@@ -776,41 +950,121 @@ def _render_dashboard(
     if not resources:
         # Show general wellbeing steps when no SHAP-matched resources available
         general_steps = [
-            ("Talk to your manager", "Share how you're feeling — they can help adjust workload or priorities."),
-            ("Connect with your team", "Social support is one of the strongest buffers against burnout."),
-            ("Take regular breaks", "Short breaks throughout the day help sustain energy and focus."),
+            ("💬 Talk to your manager", "Share how you're feeling — they can help adjust workload or priorities."),
+            ("👥 Connect with your team", "Social support is one of the strongest buffers against burnout."),
+            ("☕ Take regular breaks", "Short breaks throughout the day help sustain energy and focus."),
         ]
-        for title, desc in general_steps:
+        for icon_title, desc in general_steps:
             st.markdown(
-                f'<div style="padding:12px 14px;background:{THEME["bg"]};'
-                f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
-                f'border-radius:10px;margin-bottom:8px">'
-                f'<p style="margin:0 0 6px 0;color:{THEME["text"]};'
-                f'font-weight:600;font-size:0.88rem;line-height:1.4">{title}</p>'
-                f'<p style="margin:0;color:{tcs};font-size:0.82rem;line-height:1.4">{desc}</p></div>',
+                f'<div style="display:flex;align-items:flex-start;gap:12px;'
+                f'padding:14px 16px;background:rgba(0,0,0,0.04);border-radius:10px;margin-bottom:10px">'
+                f'<div style="flex:1">'
+                f'<p style="margin:0 0 4px 0;color:{tc};font-size:0.92rem;font-weight:600;line-height:1.3">{icon_title}</p>'
+                f'<p style="margin:0;color:{tcs};font-size:0.82rem;line-height:1.4">{desc}</p></div></div>',
                 unsafe_allow_html=True,
             )
-        st.caption("These steps are generally helpful for everyone.")
+        st.markdown(f'<p style="color:{tcs};font-size:0.78rem;margin:4px 0 0 0">These steps are generally helpful for everyone.</p>', unsafe_allow_html=True)
     else:
         st.markdown(
-            f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 10px 0">'
+            f'<p style="color:{tcs};font-size:0.8rem;margin:0 0 12px 0">'
             f"Based on: <strong>{rec_label}</strong></p>",
             unsafe_allow_html=True,
         )
-        cols = st.columns(len(resources[:3])) if resources else st.columns(1)
+        cols = st.columns(min(len(resources[:3]), 3)) if resources else st.columns(1)
         for idx, resource in enumerate(resources[:3]):
             with (cols[idx] if len(resources) > 1 else cols[0]):
                 st.markdown(
-                    f'<div style="padding:12px 14px;background:{THEME["bg"]};'
-                    f'border:1px solid {THEME["border"]};border-left:3px solid #0d7377;'
-                    f'border-radius:10px;margin-bottom:8px">'
-                    f'<p style="margin:0 0 10px 0;color:{THEME["text"]};'
-                    f'font-weight:600;font-size:0.88rem;line-height:1.4">{resource}</p></div>',
+                    f'<div style="padding:14px 16px;background:rgba(0,0,0,0.04);'
+                    f'border-radius:10px;margin-bottom:10px">'
+                    f'<p style="margin:0 0 12px 0;color:{tc};'
+                    f'font-weight:600;font-size:0.9rem;line-height:1.4">{resource}</p></div>',
                     unsafe_allow_html=True,
                 )
                 search_url = f"https://www.google.com/search?q={resource.replace(' ', '+')}"
-                st.link_button("Read this →", search_url, use_container_width=True)
+                st.link_button("Read more →", search_url, use_container_width=True)
     _collapsible_end()
+
+    # ── Peer benchmark card ──────────────────────────────────────────────
+    if features and seniority_tier is not None:
+        # Derive check-in dimensions from ux_answers (1-5 scale → 0-100)
+        ra_response = ux_answers.get("resource_allocation")  # 1-5
+        mfs_response = ux_answers.get("mental_fatigue_score")  # 1-5
+
+        emp_workload = round((ra_response / 5.0) * 100.0, 1) if ra_response else None
+        # Energy: response 1 (fully recharged) → 100, response 5 (exhausted) → 0
+        emp_energy = round(((5 - mfs_response) / 4.0) * 100.0, 1) if mfs_response else None
+
+        peer_data = get_peer_benchmark(
+            seniority_tier=float(seniority_tier),
+            tenure_days=features.get("tenure_days", 547.0),
+            wfh_setup=features.get("wfh_setup", 1.0),
+            company_type=features.get("company_type", 0.0),
+            employee_workload=emp_workload,
+            employee_energy=emp_energy,
+        )
+
+        _collapsible_card("🆚 How you compare to peers like you", "peer")
+        bucket = peer_data.get("bucket")
+        n_peers = peer_data.get("n_peers", 0)
+        dims = peer_data.get("dimensions", {})
+
+        # Build peer group label
+        if bucket:
+            bucket_label = f"{bucket.seniority_bucket.title()} · {bucket.tenure_bucket} tenure · {bucket.wfh_bucket.upper()}"
+        else:
+            bucket_label = "All employees"
+
+        peer_n_label = f"Based on {n_peers:,} similar employees" if n_peers >= 5 else "Not enough peer data yet"
+        st.markdown(
+            f'<p style="color:{tcs};font-size:0.75rem;margin:0 0 14px 0">'
+            f"{peer_n_label} · {bucket_label}</p>",
+            unsafe_allow_html=True,
+        )
+
+        dim_configs = [
+            ("Workload", "workload"),
+            ("Energy", "energy"),
+        ]
+
+        for dim_label, dim_key in dim_configs:
+            d = dims.get(dim_key, {})
+            score = d.get("score")
+            peer_avg = d.get("peer_avg", 50.0)
+            delta = d.get("delta", 0)
+
+            if score is None:
+                continue
+
+            # Bar width = score (0-100)
+            bar_width = int(score)
+            # Color: green if better than peer (lower workload is better; higher energy is better)
+            is_better = (delta < 0) if dim_key == "workload" else (delta > 0)
+            bar_color = "#10b981" if is_better else ("#f59e0b" if abs(delta) > 10 else "#0d7377")
+            delta_str = f"{'+' if delta > 0 else ''}{delta:.1f}"
+            delta_color = "#10b981" if is_better else ("#ef4444" if abs(delta) > 10 else "#9ca3af")
+
+            # Peer avg marker position (0-100 scale)
+            peer_marker = int(peer_avg)
+
+            st.markdown(
+                f'<div style="margin-bottom:14px">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+                f'<span style="color:{tc};font-size:0.88rem;font-weight:600">{dim_label}</span>'
+                f'<span style="color:{tc};font-size:0.88rem;font-weight:700">{score:.0f}'
+                f'<span style="color:{tcs};font-size:0.78rem;font-weight:400"> / {peer_avg:.0f} avg  '
+                f'<span style="color:{delta_color};font-size:0.78rem">({delta_str})</span></span>'
+                f'</div>'
+                f'<div style="position:relative;height:10px;background:rgba(0,0,0,0.06);'
+                f'border-radius:5px;overflow:hidden">'
+                f'<div style="position:absolute;left:0;top:0;height:100%;width:{bar_width}%;'
+                f'background:{bar_color};border-radius:5px"></div>'
+                f'<div style="position:absolute;left:{peer_marker}%;top:-2px;'
+                f'width:2px;height:14px;background:#374151;border-radius:1px"></div>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        _collapsible_end()
 
     # ── Card 5 — Wellbeing dimensions ───────────────────────────────────
     _collapsible_card("🧠 Your wellbeing dimensions", "dimensions")
@@ -846,10 +1100,27 @@ def render_employee_ux(
 
     # ── Score computation (local mode) ──────────────────────────────────
     if features is not None and seniority_tier is not None:
+        # Inject check-in answers into features before scoring
+        # ux_answers: resource_allocation (1-5) and mental_fatigue_score (1-5) from check-in
+        # Model expects: resource_allocation (0-10) and mental_fatigue_score (1-10)
+        ux = st.session_state.get("ux_answers", {})
+        scoring_features = dict(features)
+        if "resource_allocation" in ux:
+            ra = float(ux["resource_allocation"])
+            # Map 1-5 → 2-10 (keep well above 0 to avoid "missing" flag)
+            scoring_features["resource_allocation"] = round((ra - 1) / 4 * 8 + 2, 1)
+        if "mental_fatigue_score" in ux:
+            mfs = float(ux["mental_fatigue_score"])
+            # Map 1-5 → 2-10 (1 = fully recharged, 5 = exhausted)
+            scoring_features["mental_fatigue_score"] = round((mfs - 1) / 4 * 8 + 2, 1)
+            # Keep tenure interaction features consistent
+            scoring_features["tenure_fatigue"] = scoring_features["mental_fatigue_score"]
+            scoring_features["tenure_workload"] = scoring_features.get("resource_allocation", scoring_features["tenure_workload"])
+
         try:
             result = score_employee(
                 employee_id=employee_id,
-                features=features,
+                features=scoring_features,
                 seniority_tier=seniority_tier,
             )
         except FileNotFoundError:
@@ -937,6 +1208,16 @@ def render_employee_ux(
 
     # ── Dashboard ────────────────────────────────────────────────────────
     if screen == "dashboard":
+        # Save completed pulse to history for longitudinal tracking
+        _save_pulse(
+            employee_id=employee_id,
+            pulse=st.session_state.get("ux_answers", {}).get("resource_allocation", 3),
+            tier=tier,
+            probability=probability,
+        )
+        # Reload so the new entry appears in the chart
+        pulse_history = _load_pulse_history(employee_id)
+
         _render_dashboard(
             tier=tier,
             probability=probability,
@@ -945,16 +1226,12 @@ def render_employee_ux(
             pulse_history=pulse_history,
             top_feature=top_feature,
             ux_answers=st.session_state.get("ux_answers", {}),
+            features=features,
+            seniority_tier=seniority_tier,
         )
         st.markdown("---")
         if st.button("Check in again →", key="restart", use_container_width=True):
             for key in ["ux_screen", "ux_pulse", "ux_q_num", "ux_answers", "_ux_checkin_done"]:
                 st.session_state.pop(key, None)
             st.rerun()
-        st.markdown(
-            '<p style="text-align:center;margin-top:8px">'
-            '<a href="/?signout=1" style="color:#9ca3af;font-size:0.8rem;text-decoration:none">'
-            '🚪 Sign out</a></p>',
-            unsafe_allow_html=True,
-        )
         return
