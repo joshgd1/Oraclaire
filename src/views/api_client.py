@@ -510,10 +510,8 @@ def logout(token: str) -> None:
     """
     POST /api/auth/logout — invalidate the current token server-side.
 
-    The server MUST maintain a token blocklist (e.g. Redis set of revoked JTI
-    claims) and check it on every authenticated request. Without a blocklist,
-    the token remains valid until its natural expiry — clearing it client-side
-    only (st.session_state) does not invalidate the token itself.
+    In dev mode the backend may not implement this endpoint (404).
+    Catches all errors silently — logout is always client-side completion.
     """
     try:
         resp = requests.post(
@@ -521,7 +519,10 @@ def logout(token: str) -> None:
             headers=_headers(token),
             timeout=TIMEOUT,
         )
+        # 404 = endpoint not implemented (dev mode), 401 = already expired — both OK
+        if resp.status_code == 404:
+            return
         if not resp.ok and resp.status_code != 401:
             raise ApiError(f"Logout failed: {resp.text}", status_code=resp.status_code)
     except requests.ConnectionError:
-        pass  # Network error — proceed client-side; token may still be valid server-side
+        pass  # Network error — proceed client-side

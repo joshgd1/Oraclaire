@@ -1,7 +1,8 @@
 """
-Employee-facing UX — 6-screen flow.
+Employee-facing UX — 7-screen flow.
 
-Screen 1: Weekly check-in (one question, five options)
+Screen 0: What to expect (intro, what we'll ask, privacy promise)
+Screen 1: Weekly check-in (5 questions mapping to burnout drivers)
 Screen 2: Your result (privacy notice, plain label, one action)
 Screen 3: Wellbeing dimensions (radar chart, all 8 axes)
 Screen 4: What is affecting this (three plain sentences)
@@ -9,6 +10,8 @@ Screen 5: What might help (matched resources, max 3)
 Screen 6: Your trend (simple line, no numbers)
 
 Mobile-first. No jargon. Privacy notice visible on every result screen.
+Target audiences: employees using the app, business managers approving launch,
+fellow developers inheriting the codebase.
 """
 
 from typing import Literal
@@ -116,40 +119,250 @@ def _card(content_fn, *args, **kwargs):
         st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ── Screen 1: Weekly check-in ──────────────────────────────────────────────
+# ── Assessment questions ─────────────────────────────────────────────────────
+# Questions map to burnout drivers. Labels are plain-language;
+# internal names map to model features.
+# To change a question, edit only the dictionaries below.
 
-def screen_checkin(on_submit) -> int | None:
-    """One question. Five large tap targets. Returns pulse (1-5) or None."""
+ASSESSMENT_QUESTIONS = [
+    {
+        "id": "workload",
+        "question": "How would you describe your workload this week?",
+        "subtext": "Consider tasks, deadlines, and how busy you've been.",
+        "feature": "resource_allocation",
+        "options": [
+            ("Very light — plenty of downtime", 1),
+            ("Manageable — I kept on top of things", 2),
+            ("Busy — but sustainable", 3),
+            ("Very busy — regularly overtime", 4),
+            ("Overwhelming — couldn't keep up", 5),
+        ],
+    },
+    {
+        "id": "energy",
+        "question": "How would you describe your energy levels this week?",
+        "subtext": "How full did your energy reserves feel day to day?",
+        "feature": "mental_fatigue_score",
+        "options": [
+            ("Fully recharged — always had energy", 1),
+            ("Mostly good — occasional dips", 2),
+            ("Moderate — some fatigue creeping in", 3),
+            ("Low energy most days", 4),
+            ("Exhausted — running on empty", 5),
+        ],
+    },
+    {
+        "id": "sleep",
+        "question": "How well did you recover between workdays?",
+        "subtext": "Think about sleep quality and whether work followed you home.",
+        "feature": "mental_fatigue_score",
+        "options": [
+            ("Fully switched off — work didn't follow me", 1),
+            ("Mostly relaxed — occasional thoughts", 2),
+            ("Some tension — found it hard to fully unwind", 3),
+            ("Often still thinking about work", 4),
+            ("Could never properly switch off", 5),
+        ],
+    },
+    {
+        "id": "pressure",
+        "question": "Did you notice any signs of excessive pressure?",
+        "subtext": "Physical or emotional signals that things were too much.",
+        "feature": "resource_allocation",
+        "options": [
+            ("None — felt calm throughout", 1),
+            ("Minor — a few moments of strain", 2),
+            ("Some — felt stretched at times", 3),
+            ("Significant — several difficult days", 4),
+            ("Severe — constantly under pressure", 5),
+        ],
+    },
+    {
+        "id": "support",
+        "question": "How well supported did you feel at work?",
+        "subtext": "Whether you had the resources, help, or backing you needed.",
+        "feature": "wfh_setup",
+        "options": [
+            ("Fully supported — always had what I needed", 1),
+            ("Mostly supported — small gaps", 2),
+            ("Somewhat — a few things were missing", 3),
+            ("Often unsupported — struggling at times", 4),
+            ("No real support — isolated and stretched", 5),
+        ],
+    },
+]
+
+
+def _privacy_badge():
+    """Shown at the top of every screen."""
+    st.markdown(
+        '<div style="background:#f0fdfa;border:1px solid #99f6e4;'
+        'border-radius:10px;padding:10px 16px;margin-bottom:20px">'
+        '<p style="margin:0;color:#065f46;font-size:0.85rem;font-weight:500">'
+        '🔒 Your answers are private. Only team-level trends are visible to managers and HR.</p></div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ── Screen 0: What to expect ──────────────────────────────────────────────
+
+def screen_intro() -> None:
+    """Intro screen — explains what we'll ask and why."""
+
+    # Header
     st.markdown(
         f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
         f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0 0 4px 0">'
         f"Weekly check-in</p>",
         unsafe_allow_html=True,
     )
-    st.title("How was your week?")
+    st.title("A quick check on how you're doing")
 
-    # Big tap targets — one per option
-    pulse_labels = [
-        ("Really rough",  1, "😔"),
-        ("Tough",         2, "😟"),
-        ("Okay",          3, "😐"),
-        ("Pretty good",   4, "🙂"),
-        ("Great",         5, "😊"),
+    # Privacy badge — always visible at top
+    _privacy_badge()
+
+    # Time estimate callout — prominent but clean
+    st.markdown(
+        f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
+        f'border-radius:12px;padding:16px 20px;margin-bottom:24px;'
+        f'display:flex;align-items:center;gap:14px">'
+        f'<span style="font-size:1.5rem">⏱️</span>'
+        f'<div>'
+        f'<p style="margin:0;color:{THEME["text"]};font-size:1rem;font-weight:600">'
+        f'Takes about 60 seconds</p>'
+        f'<p style="margin:0;color:{THEME["text_secondary"]};font-size:0.85rem">'
+        f'Five short questions, plain language</p>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    # What we measure — icon cards in a clean grid
+    _section_title("What we're checking")
+    dimensions = [
+        ("⚡", "Workload", "How busy you've been and whether it's sustainable"),
+        ("🔋", "Energy", "Whether your energy levels have been holding up"),
+        ("😴", "Recovery", "How well you've been switching off outside work"),
+        ("📈", "Pressure", "Any signs you were being stretched too far"),
+        ("🤝", "Support", "Whether you had the resources and backing you needed"),
     ]
 
-    # Stack vertically for easy mobile tapping
-    for label, value, emoji in pulse_labels:
-        col1, col2 = st.columns([1, 5])
-        with col2:
+    # Render as a 2-column grid of cards
+    cols = st.columns(2)
+    for i, (icon, dim, desc) in enumerate(dimensions):
+        with cols[i % 2]:
+            st.markdown(
+                f'<div style="background:{THEME["card_bg"]};border:1px solid {THEME["border"]};'
+                f'border-radius:10px;padding:14px 16px;margin-bottom:10px;'
+                f'display:flex;align-items:flex-start;gap:12px">'
+                f'<span style="font-size:1.3rem;flex-shrink:0;margin-top:1px">{icon}</span>'
+                f'<div>'
+                f'<p style="margin:0 0 2px 0;color:{THEME["text"]};'
+                f'font-size:0.95rem;font-weight:600">{dim}</p>'
+                f'<p style="margin:0;color:{THEME["text_secondary"]};font-size:0.82rem;'
+                f'line-height:1.4">{desc}</p>'
+                f'</div></div>',
+                unsafe_allow_html=True,
+            )
+
+    # Divider — the Start button lives in render_employee_ux
+    st.markdown("---")
+
+
+# ── Screen 1: Weekly check-in ──────────────────────────────────────────────
+
+def screen_checkin(on_submit) -> int | None:
+    """Multi-question check-in. Returns pulse (1-5) or None when cancelled."""
+    questions = ASSESSMENT_QUESTIONS
+    total = len(questions)
+    q_num = st.session_state.get("ux_q_num", 1)
+
+    # Privacy badge at top
+    _privacy_badge()
+
+    if q_num > total:
+        # All questions answered — compute aggregate pulse and advance
+        answers = st.session_state.get("ux_answers", {})
+        raw_score = sum(answers.values()) / len(answers)
+        pulse = max(1, min(5, round(raw_score)))
+        on_submit(pulse)
+        return
+
+    # Progress header
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.markdown(
+            f'<p style="font-size:0.72rem;font-weight:700;text-transform:uppercase;'
+            f'letter-spacing:0.08em;color:{THEME["text_secondary"]};margin:0">'
+            f"Question {q_num} of {total}</p>",
+            unsafe_allow_html=True,
+        )
+    with col2:
+        # Progress bar
+        progress = q_num / total
+        st.progress(progress, text="")
+
+    # Current question
+    q = questions[q_num - 1]
+    st.title(q["question"])
+
+    # Subtext with better styling
+    st.markdown(
+        f'<p style="color:{THEME["text_secondary"]};font-size:0.95rem;'
+        f'margin-bottom:28px;line-height:1.5">'
+        f"{q['subtext']}</p>",
+        unsafe_allow_html=True,
+    )
+
+    # Record answer and advance
+    answer_key = f"q_{q['id']}"
+    selected = st.session_state.get(answer_key)
+
+    # Show option buttons with intensity indicator
+    # Color gradient: low intensity (green) → high intensity (red)
+    intensity_colors = [
+        ("#10b981", "#059669"),  # 1 - green
+        ("#34d399", "#10b981"),  # 2 - light green
+        ("#fbbf24", "#f59e0b"), # 3 - yellow/amber
+        ("#fb923c", "#f97316"),  # 4 - orange
+        ("#f87171", "#ef4444"),  # 5 - red
+    ]
+
+    for idx, (label, value) in enumerate(q["options"]):
+        is_selected = (selected == value)
+        bg_color, border_color = intensity_colors[idx]
+
+        # Selected state card
+        if is_selected:
+            st.markdown(
+                f'<div style="background:{bg_color}18;border:2px solid {bg_color};'
+                f'border-radius:12px;padding:14px 18px;margin-bottom:10px;'
+                f'display:flex;align-items:center;gap:12px">'
+                f'<span style="color:{bg_color};font-size:1.1rem">✓</span>'
+                f'<span style="color:{THEME["text"]};font-size:0.95rem;font-weight:500">'
+                f'{label}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Normal button-like option
             if st.button(
-                f"{emoji}  {label}",
-                key=f"pulse_{value}",
+                f"{label}",
+                key=f"{answer_key}_{value}",
                 use_container_width=True,
             ):
-                on_submit(value)
-                return value
-        with col1:
-            pass  # emoji spacer handled by column width
+                st.session_state[answer_key] = value
+                answers = st.session_state.get("ux_answers", {})
+                answers[q["feature"]] = value
+                st.session_state.ux_answers = answers
+                st.session_state.ux_q_num = q_num + 1
+                st.rerun()
+
+    # Back button (not on first question)
+    if q_num > 1:
+        st.markdown("<br>", unsafe_allow_html=True)  # spacing
+        if st.button("← Back", key="checkin_back", use_container_width=True):
+            st.session_state.ux_q_num = q_num - 1
+            st.rerun()
 
     return None
 
@@ -399,6 +612,15 @@ def _tier_color(tier: str) -> str:
     )
 
 
+def _tier_color_rgba(tier: str, alpha: float = 0.18) -> str:
+    """Return rgba() string for a tier hex color with configurable alpha."""
+    hex_color = _tier_color(tier)
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def screen_radar(
     radar_values: dict,
     tier: str,
@@ -432,7 +654,7 @@ def screen_radar(
                 r=values + [values[0]],  # close the polygon
                 theta=dimensions + [dimensions[0]],
                 fill="toself",
-                fillcolor=f"{tier_color}30",
+                fillcolor=_tier_color_rgba(tier),
                 line_color=tier_color,
                 line_width=2.5,
                 marker=dict(size=6, color=tier_color),
@@ -630,11 +852,27 @@ def render_employee_ux(
     st.session_state.radar_values = radar_values
 
     # ── State machine: which screen are we on? ─────────────────────────────
-    # States: checkin → result → radar → factors → resources → trend → done
+    # States: intro → checkin → result → radar/factors/trend → resources → done
     if "ux_screen" not in st.session_state:
-        st.session_state.ux_screen = "checkin"
+        st.session_state.ux_screen = "intro"
+
+    # Reset check-in progress when starting a new assessment
+    if st.session_state.ux_screen in ("intro", "done"):
+        st.session_state.ux_q_num = 1
+        st.session_state.ux_answers = {}
 
     screen = st.session_state.ux_screen
+
+    # ── Screen 0: What to expect ────────────────────────────────────────
+    if screen == "intro":
+        screen_intro()
+        # Start button — bottom of intro screen, right-aligned
+        col_spacer, col_btn = st.columns([3, 1])
+        with col_btn:
+            if st.button("Start check-in →", key="start_checkin", use_container_width=True):
+                st.session_state.ux_screen = "checkin"
+                st.rerun()
+        return
 
     # ── Screen 1: Weekly check-in ────────────────────────────────────────
     if screen == "checkin":
@@ -651,9 +889,6 @@ def render_employee_ux(
             st.session_state.ux_screen = "factors"
             st.rerun()
 
-        if screen_result(tier, probability, on_see_factors):
-            return  # state updated, rerun will show next screen
-
         col_dim, col_trend = st.columns([1, 1])
         with col_dim:
             if st.button("See your dimensions →", key="see_radar", use_container_width=True):
@@ -663,6 +898,9 @@ def render_employee_ux(
             if st.button("See your trend →", key="see_trend", use_container_width=True):
                 st.session_state.ux_screen = "trend"
                 st.rerun()
+
+        if screen_result(tier, probability, on_see_factors):
+            return  # state updated, rerun will show next screen
 
     # ── Screen 3: Wellbeing dimensions (radar) ───────────────────────────
     elif screen == "radar":

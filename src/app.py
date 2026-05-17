@@ -46,30 +46,273 @@ from src.views.reviewer import render_reviewer_view
 # ── Theme constants ────────────────────────────────────────────────────────────
 
 THEME = {
-    "bg": "#1e1e2e",
-    "card_bg": "#2a2a3e",
+    "bg": "#0d7377",
+    "card_bg": "#f0faf9",
     "primary": "#0d7377",
     "primary_light": "#14919b",
-    "text": "#e5e7eb",
-    "text_secondary": "#9ca3af",
-    "border": "#3d3d5c",
-    "low_color": "#10b981",
-    "moderate_color": "#f59e0b",
-    "high_color": "#f97316",
-    "critical_color": "#ef4444",
-    "sidebar_bg": "#13131f",
+    "text": "#111827",
+    "text_secondary": "#6b7280",
+    "border": "#d1fae5",
+    "low_color": "#059669",
+    "moderate_color": "#d97706",
+    "high_color": "#ea580c",
+    "critical_color": "#dc2626",
+    "sidebar_bg": "#0a3d47",
     "sidebar_text": "#e5e7eb",
+    "page_bg": "#ffffff",
 }
 
 
+def _sidebar_html_full(name: str, role_label: str, role: str, nav_html: str) -> str:
+    """Render the full sidebar as a single HTML block for complete design control."""
+
+    # Role-specific info cards
+    cards = {
+        "employee": [
+            ("🔒", "Privacy",
+             "Only you see your individual answers. Managers and HR see team averages only — never your name."),
+            ("📊", "What we measure",
+             "Workload, energy levels, recovery between workdays, pressure signals, and how supported you feel."),
+            ("📋", "Your result",
+             "Low = doing well. Moderate = worth watching. High = support available. Critical = please talk to someone."),
+        ],
+        "manager": [
+            ("📈", "ORT explained",
+             "The fraction of your team in High or Critical. If it exceeds 20%, the team is flagged for review."),
+            ("🚩", "Warning signs",
+             "Multiple elevated weeks, consecutive decline, or individuals in Critical. Trend shows direction, not scores."),
+            ("💬", "Supporting your team",
+             "Regular 1:1s work best. Focus on workload, energy, and recovery — not the score."),
+            ("🔒", "What you cannot see",
+             "You cannot see individual answers, individual scores, or who responded. Only team patterns and ORT."),
+        ],
+        "hr_admin": [
+            ("📐", "Methodology",
+             "Random Forest classifier trained on HR-validated burnout labels. SHAP provides per-employee explainability."),
+            ("🚨", "ORT & Critical tier",
+             "ORT ceiling: 20%. Critical capped at 5% of scorable population. Critical employees enter Reviewer Queue within 48h."),
+            ("🔐", "Privacy architecture",
+             "Individual answers only visible to the employee. Managers see only team aggregates. HR sees org-wide aggregates."),
+            ("🔧", "Config & thresholds",
+             "All values in src/config.py: THRESHOLD_A, THRESHOLD_B, ORT_CEILING, CRITICAL_HEALTH_CEILING."),
+        ],
+    }
+
+    card_html = ""
+    for icon, heading, body in cards.get(role, cards["employee"]):
+        card_html += (
+            f'<div class="sb-card">'
+            f'<div class="sb-card-header">'
+            f'<span class="sb-card-icon">{icon}</span>'
+            f'<span class="sb-card-heading">{heading}</span>'
+            f'</div>'
+            f'<p class="sb-card-body">{body}</p>'
+            f'</div>'
+        )
+
+    role_badge_color = {
+        "employee": "#0d7377",
+        "manager": "#7c3aed",
+        "hr_admin": "#b45309",
+        "system_admin": "#b45309",
+    }.get(role, "#0d7377")
+
+    return f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Brand header */
+.sb-brand {{
+    padding: 4px 0 18px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    margin-bottom: 14px;
+}}
+.sb-brand-name {{
+    font-family: 'Inter', sans-serif;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+    margin: 0 0 2px 0;
+}}
+.sb-brand-sub {{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.45);
+    margin: 0;
+}}
+
+/* User card */
+.sb-user {{
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin-bottom: 14px;
+}}
+.sb-user-name {{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0 0 5px 0;
+}}
+.sb-user-role-badge {{
+    display: inline-block;
+    background: {role_badge_color};
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 100px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}}
+
+/* Nav links */
+.sb-nav-btn {{
+    display: block;
+    width: 100%;
+    padding: 9px 13px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.75);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 500;
+    text-decoration: none;
+    text-align: left;
+    margin-bottom: 7px;
+    transition: background 0.15s, color 0.15s;
+}}
+.sb-nav-btn:hover {{
+    background: rgba(255,255,255,0.13);
+    color: #ffffff;
+}}
+.sb-nav-active {{
+    display: block;
+    width: 100%;
+    padding: 9px 13px;
+    border-radius: 8px;
+    background: #0d7377;
+    border: 1px solid rgba(13,115,119,0.4);
+    color: #ffffff;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+    text-align: left;
+    margin-bottom: 7px;
+}}
+
+/* Sign out */
+.sb-signout {{
+    display: block;
+    width: 100%;
+    padding: 8px 13px;
+    border-radius: 8px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.5);
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 500;
+    text-decoration: none;
+    text-align: center;
+    margin-top: 10px;
+    transition: background 0.15s, color 0.15s;
+}}
+.sb-signout:hover {{
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.8);
+}}
+
+/* Section label */
+.sb-label {{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0 0 8px 2px;
+}}
+
+/* Info cards */
+.sb-card {{
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin-bottom: 8px;
+}}
+.sb-card-header {{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 5px;
+}}
+.sb-card-icon {{
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}}
+.sb-card-heading {{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #ffffff;
+    margin: 0;
+}}
+.sb-card-body {{
+    font-family: 'Inter', sans-serif;
+    font-size: 0.74rem;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.5;
+    margin: 0;
+}}
+
+/* Divider */
+.sb-divider {{
+    border: none;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    margin: 12px 0;
+}}
+</style>
+
+<div class="sb-brand">
+    <p class="sb-brand-name">Oraclaire</p>
+    <p class="sb-brand-sub">Burnout Risk Assessment</p>
+</div>
+
+<div class="sb-user">
+    <p class="sb-user-name">{name}</p>
+    <span class="sb-user-role-badge">{role_label}</span>
+</div>
+
+<p class="sb-label">Navigate</p>
+{nav_html}
+
+<hr class="sb-divider"/>
+
+<p class="sb-label">Role guide</p>
+{card_html}
+
+<hr class="sb-divider"/>
+
+<a href="?signout=1" class="sb-signout">Sign out</a>
+"""
+
+
 def _inject_theme():
-    """Inject custom CSS for a clean, professional theme."""
+    """Inject custom CSS matching the teal login page theme."""
     st.html(
         f"""
         <style>
         /* Page */
         .stApp, .stMainBlockContainer {{
-            background: {THEME['bg']} !important;
+            background: {THEME['page_bg']} !important;
         }}
         /* Cards */
         .stMarkdown, .element-container {{
@@ -80,13 +323,6 @@ def _inject_theme():
             color: {THEME['text']} !important;
             font-family: 'Inter', 'Segoe UI', system-ui, sans-serif !important;
             font-weight: 600 !important;
-        }}
-        /* Sidebar */
-        [data-testid="stSidebar"] {{
-            background: {THEME['sidebar_bg']} !important;
-        }}
-        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {{
-            color: {THEME['sidebar_text']} !important;
         }}
         /* Metric cards */
         [data-testid="stMetric"] {{
@@ -114,16 +350,18 @@ def _inject_theme():
             font-weight: 600 !important;
             border: none !important;
             transition: all 0.15s !important;
+            background: {THEME['primary']} !important;
+            color: white !important;
         }}
         .stButton > button:hover {{
-            opacity: 0.88 !important;
+            background: {THEME['primary_light']} !important;
             transform: translateY(-1px) !important;
         }}
         /* Text inputs */
         .stTextInput > div > div > input, .stTextArea > div > div > textarea {{
             border-radius: 8px !important;
             border: 1px solid {THEME['border']} !important;
-            background: {THEME['card_bg']} !important;
+            background: white !important;
             color: {THEME['text']} !important;
         }}
         .stTextInput > div > div > input::placeholder, .stTextArea > div > div > textarea::placeholder {{
@@ -189,22 +427,22 @@ def _inject_theme():
         /* Info boxes */
         [data-testid="stInfo"] {{
             background: #eff6ff !important;
-            border-left: 4px solid #3b82f6 !important;
+            border-left: 4px solid {THEME['primary']} !important;
             border-radius: 8px !important;
         }}
         [data-testid="stSuccess"] {{
             background: #f0fdf4 !important;
-            border-left: 4px solid #22c55e !important;
+            border-left: 4px solid {THEME['low_color']} !important;
             border-radius: 8px !important;
         }}
         [data-testid="stWarning"] {{
             background: #fffbeb !important;
-            border-left: 4px solid #f59e0b !important;
+            border-left: 4px solid {THEME['moderate_color']} !important;
             border-radius: 8px !important;
         }}
         [data-testid="stError"] {{
             background: #fef2f2 !important;
-            border-left: 4px solid #ef4444 !important;
+            border-left: 4px solid {THEME['critical_color']} !important;
             border-radius: 8px !important;
         }}
         /* Spinner */
@@ -260,11 +498,15 @@ def _tier_badge_html(tier: str, probability: float) -> str:
 
 
 def _clear_auth():
-    """Clear auth session state after token expiry."""
+    """Clear auth session state after token expiry or sign-out."""
     for key in ["auth_token", "auth_employee_id", "auth_role"]:
         st.session_state[key] = None
     st.session_state.page_nav = "Employee"
     st.session_state.ux_started = False
+    # Wipe demo UX state so next login starts fresh
+    for key in ["ux_screen", "ux_pulse", "ux_demo_features",
+                 "ux_demo_seniority", "ux_demo_employee_id", "radar_values"]:
+        st.session_state.pop(key, None)
 
 
 def ensure_model():
@@ -374,6 +616,30 @@ def page_landing():
             box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
         }
         .login-input::placeholder { color: #9ca3af !important; }
+        .login-input {
+            width: 100% !important;
+            border-radius: 10px !important; border: 1.5px solid #e5e7eb !important;
+            background: #f9fafb !important; color: #111827 !important;
+            font-family: 'Inter', sans-serif !important;
+            font-size: 0.9rem !important; padding: 10px 14px !important;
+            box-sizing: border-box !important;
+            transition: border-color 0.15s !important;
+            outline: none !important;
+            -webkit-appearance: none !important;
+            appearance: none !important;
+        }
+        select.login-input {
+            cursor: pointer !important;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 14px center !important;
+            padding-right: 36px !important;
+        }
+        select.login-input:focus {
+            border-color: #0d7377 !important;
+            background-color: #ffffff !important;
+            box-shadow: 0 0 0 3px rgba(13,115,119,0.1) !important;
+        }
         .btn-primary {
             width: 100% !important; background: #0d7377 !important;
             color: #ffffff !important; border: none !important;
@@ -467,6 +733,15 @@ def page_landing():
                         <input class="login-input" type="text" id="empIdInput" name="emp_id"
                                placeholder="e.g. 1" autocomplete="off" />
                     </div>
+                    <div>
+                        <label class="login-label" for="roleSelect">Role</label>
+                        <select class="login-input" id="roleSelect" name="role"
+                                style="cursor:pointer">
+                            <option value="employee">Employee</option>
+                            <option value="hr_admin">HR Admin</option>
+                            <option value="manager">Manager</option>
+                        </select>
+                    </div>
                     <button class="btn-primary" type="submit">Sign in</button>
                 </form>
             </div>
@@ -480,93 +755,31 @@ def page_employee():
     employee_id = st.session_state.get("auth_employee_id")
 
     if not token or not employee_id:
-        # Demo mode: full 5-screen UX with feature sliders to compute score
-        demo_employee_id = st.text_input(
-            "Your name or ID",
-            value="EID_001",
-            placeholder="e.g. Alex Chen",
-            key="demo_emp_id",
+        # Demo mode: run the full employee UX flow locally (no backend needed).
+        # Mirrors the real employee experience: disclosure → pulse → results → radar → factors.
+        # Use demo employee ID and defaults for all inputs.
+        if "ux_demo_features" not in st.session_state:
+            # First time: initialise demo features with sensible defaults
+            st.session_state.ux_demo_employee_id = "Demo"
+            st.session_state.ux_demo_seniority = 2
+            st.session_state.ux_demo_features = {
+                "tenure_days": 547.0,
+                "mental_fatigue_score": 5.0,
+                "resource_allocation": 5.0,
+                "wfh_setup": 1.0,
+                "company_type": 0.0,
+                "seniority_tier": 2.0,
+                "missing_ra": 0.0,
+                "missing_mfs": 0.0,
+                "tenure_fatigue": 5.0,
+                "tenure_workload": 5.0,
+            }
+
+        render_employee_ux(
+            employee_id=st.session_state.ux_demo_employee_id,
+            features=st.session_state.ux_demo_features,
+            seniority_tier=st.session_state.ux_demo_seniority,
         )
-
-        # Feature sliders
-        tenure_years = st.selectbox(
-            "Time in this role",
-            options=[0, 1, 2, 3, 4, 5],
-            format_func=lambda x: [
-                "< 6 months", "6–12 months", "1–2 years",
-                "2–5 years", "5–10 years", "10+ years",
-            ][x],
-            index=2,
-            key="demo_tenure",
-        )
-        tenure_map = {0: 90, 1: 270, 2: 547, 3: 1095, 4: 1825, 5: 2555}
-        tenure_days = tenure_map.get(tenure_years, 547)
-
-        energy = st.slider(
-            "Energy level",
-            min_value=1.0, max_value=10.0, value=5.0, step=0.5,
-            help="1 = running on empty · 10 = feeling energized",
-            key="demo_energy",
-        )
-        workload = st.slider(
-            "Workload",
-            min_value=0.0, max_value=10.0, value=5.0, step=0.5,
-            help="0 =轻松应付 · 10 =不堪重负",
-            key="demo_workload",
-        )
-
-        wfh = st.radio(
-            "WFH setup",
-            options=["Yes", "No", "N/A"],
-            index=0, horizontal=True,
-            key="demo_wfh",
-        )
-        wfh_setup = 1 if wfh == "Yes" else 0
-        seniority_tier = st.selectbox(
-            "Role level",
-            options=[0, 1, 2, 3, 4, 5],
-            format_func=lambda x: [
-                "Associate / IC1",
-                "Senior Associate / IC2",
-                "Manager / IC3",
-                "Senior Manager / IC4",
-                "Director / VP / IC5",
-                "Senior Director / SVP / IC6+",
-            ][x],
-            index=0,
-            key="demo_seniority",
-        )
-
-        features = {
-            "tenure_days": float(tenure_days),
-            "mental_fatigue_score": float(energy),
-            "resource_allocation": float(workload),
-            "wfh_setup": float(wfh_setup),
-            "company_type": 0.0,
-            "seniority_tier": float(seniority_tier),
-            "missing_ra": 0.0,
-            "missing_mfs": 0.0,
-            "tenure_fatigue": 5.0,
-            "tenure_workload": 5.0,
-        }
-
-        st.markdown("---")
-        if st.button("Run assessment", key="run_demo", use_container_width=True):
-            st.session_state.ux_demo_features = features
-            st.session_state.ux_demo_seniority = seniority_tier
-            st.session_state.ux_demo_employee_id = demo_employee_id
-            st.session_state.ux_screen = "result"
-            st.rerun()
-
-        if st.session_state.get("ux_screen") in ("result", "factors", "resources", "trend", "done"):
-            render_employee_ux(
-                employee_id=st.session_state.get("ux_demo_employee_id", demo_employee_id),
-                features=st.session_state.get("ux_demo_features", features),
-                seniority_tier=st.session_state.get("ux_demo_seniority", seniority_tier),
-            )
-        else:
-            st.info("Answer the questions above and click **Run assessment** to see your results.")
-
         st.caption(
             "Demo mode — results are calculated locally and never stored. "
             "Sign in to see your actual assessment."
@@ -776,6 +989,7 @@ def main():
     # so we check params before any page rendering to intercept the redirect.
     qp = st.query_params
     emp_id_param = qp.get("emp_id", "")
+    role_param = qp.get("role", "employee")
 
     if emp_id_param:
         qp.clear()
@@ -790,8 +1004,13 @@ def main():
                     st.session_state.login_failed_attempts = 0
                     st.session_state.auth_token = auth_data["token"]
                     st.session_state.auth_employee_id = emp_id
-                    st.session_state.auth_role = auth_data.get("role", "")
-                    actual_role = auth_data.get("role", "employee")
+                    # Use role from form if valid, otherwise from backend
+                    st.session_state.auth_role = (
+                        role_param
+                        if role_param in ("employee", "manager", "hr_admin", "system_admin")
+                        else auth_data.get("role", "employee")
+                    )
+                    actual_role = st.session_state.auth_role
                     default_page = {
                         "employee": "Employee",
                         "manager": "Manager",
@@ -825,45 +1044,52 @@ def main():
             "system_admin": "System Admin",
         }
 
+        role = st.session_state.auth_role
+        role_label = role_display_map.get(role, role)
+        name = st.session_state.auth_employee_id or "Unknown"
+
+        # Build nav links as HTML
+        pages = {
+            "employee": [("My Assessment", "Employee")],
+            "manager": [("Team Dashboard", "Manager"), ("My Assessment", "Employee")],
+            "hr_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+            "system_admin": [("Org Overview", "HR Aggregate"), ("Reviewer Queue", "Reviewer")],
+        }.get(role, [])
+
+        current_page = st.session_state.page_nav
+        nav_html = ""
+        for label, page_name in pages:
+            active = current_page == page_name
+            cls = "sb-nav-active" if active else "sb-nav-btn"
+            nav_html += f'<a href="?nav={page_name}" class="{cls}">{label}</a>'
+
+        # Render full sidebar as pure HTML
         with st.sidebar:
-            st.markdown("### Oraclaire")
-            st.caption("Burnout Risk Assessment")
-            st.markdown("---")
+            st.html(_sidebar_html_full(name, role_label, role, nav_html))
 
-            role_label = role_display_map.get(
-                st.session_state.auth_role, st.session_state.auth_role
-            )
-            st.success(f"**{st.session_state.auth_employee_id}**")
-            st.caption(f"Role: {role_label}")
-            st.markdown("---")
-            if st.button("Sign out", use_container_width=True):
-                logout(st.session_state.get("auth_token", ""))
-                _clear_auth()
-                st.session_state.login_failed_attempts = 0
-                st.rerun()
+        # Handle sign-out via query param
+        if qp.get("signout") == "1":
+            qp["signout"] = ""
+            logout(st.session_state.get("auth_token", ""))
+            _clear_auth()
+            st.session_state.login_failed_attempts = 0
+            st.rerun()
 
-            st.markdown("---")
-            st.markdown("#### Navigate")
-            page_options = ["Employee", "HR Aggregate", "Manager", "Reviewer"]
-            current_idx = (
-                page_options.index(st.session_state.page_nav)
-                if st.session_state.page_nav in page_options
-                else 0
-            )
-            page = st.selectbox(
-                "View",
-                options=page_options,
-                index=current_idx,
-                label_visibility="collapsed",
-            )
-            st.session_state.page_nav = page
+        # Handle navigation via query params
+        nav_param = qp.get("nav", "")
+        if nav_param and nav_param != current_page:
+            qp["nav"] = ""
+            st.session_state.page_nav = nav_param
+            st.rerun()
+
+        page = st.session_state.page_nav
 
         if page == "Employee":
             page_employee()
-        elif page == "HR Aggregate":
-            page_hr()
         elif page == "Manager":
             page_manager()
+        elif page == "HR Aggregate":
+            page_hr()
         elif page == "Reviewer":
             if not st.session_state.auth_token:
                 st.warning("Sign in to access the Reviewer queue.")
@@ -881,8 +1107,16 @@ def main():
         if not st.session_state.get("ux_started"):
             page_landing()
         else:
-            st.session_state.page_nav = "Employee"
-            page_employee()
+            # Route based on the role selected in the form (not the employee quiz)
+            auth_role = st.session_state.get("auth_role")
+            if auth_role == "manager":
+                page_manager()
+            elif auth_role == "hr_admin":
+                page_hr()
+            elif auth_role == "system_admin":
+                page_hr()
+            else:
+                page_employee()
 
 
 if __name__ == "__main__":
