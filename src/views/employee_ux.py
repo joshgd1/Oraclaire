@@ -661,7 +661,7 @@ def _render_trend_chart(history: list[dict]):
         pulse = entry.get("pulse")
         if pulse is None:
             continue
-        tier = entry.get("tier", "moderate")
+        tier = entry.get("tier") or "moderate"
         labels.append(label)
         pulses.append(pulse)
         tiers.append(tier)

@@ -204,8 +204,18 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                 response_values = [r.response_value for r in sorted_responses]
 
                 if cycle_type == "cbi":
-                    # CBI: 19 items → extract 10 features
+                    # CBI: 19 items → validate with scorecbi(), then extract features
+                    from src.model.services.cbi import CBIValidationError, scorecbi
                     from src.model.services.feature_extraction import extract_from_cbi
+                    try:
+                        cbi_result = scorecbi(response_values, na_acceptable=False)
+                    except CBIValidationError:
+                        numeric_score = 0.5
+                        risk_tier = "moderate"
+                        shap_values_out = []
+                        model_version_str = "1.0.0-fallback"
+                        # Skip to next employee
+                        continue
                     feat = extract_from_cbi(
                         responses=response_values,
                         seniority_tier=seniority_tier,
@@ -213,6 +223,7 @@ async def _run_scoring_async(cycle_id: int, organisation_id: int) -> None:
                         company_type=emp.company_type,
                         wfh_setup=emp.wfh_setup_available if hasattr(emp, "wfh_setup_available") else False,
                         reference_date=scored_at.date(),
+                        cbi_result=cbi_result,
                     )
                     features = feat.to_dict()
                 else:

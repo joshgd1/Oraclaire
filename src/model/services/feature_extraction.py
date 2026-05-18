@@ -28,6 +28,7 @@ from datetime import date
 from typing import Literal
 
 from src.config import FEATURES, SENIORITY_DESIGNATION_CUTOFF
+from src.model.services.cbi import CBIResult
 
 # CBI item index constants (0-based)
 _CBI_PB_ITEMS = {0, 1, 2, 3, 4, 5, 17, 18}   # Personal Burnout items
@@ -124,6 +125,7 @@ def extract_from_cbi(
     company_type: Literal["Product", "Service"] | None = None,
     wfh_setup: bool | None = None,
     reference_date: date | None = None,
+    cbi_result: CBIResult | None = None,
 ) -> ExtractedFeatures:
     """
     Extract all 10 model features from a 19-item CBI response list.
@@ -143,6 +145,9 @@ def extract_from_cbi(
         True = "Yes"=1, False = "No"=0. Defaults to 0.
     reference_date:
         Override for tenure calculation (useful for testing with fixed date).
+    cbi_result:
+        Optional CBIResult from scorecbi(). When provided, subscale scores
+        are taken from cbi_result rather than recomputed from raw responses.
 
     Returns
     -------
@@ -153,6 +158,8 @@ def extract_from_cbi(
     ------
     ValueError
         If seniority_tier is not 0 or 1.
+    CBIValidationError
+        If cbi_result is not provided and raw responses fail validation.
     """
     if seniority_tier not in (0, 1):
         raise ValueError(f"seniority_tier must be 0 or 1, got {seniority_tier}")
@@ -164,9 +171,13 @@ def extract_from_cbi(
     missing_ra = _compute_missing_ra(responses)
     missing_mfs = _compute_missing_mfs(responses)
 
-    # Subscale means (0-100)
-    resource_raw, _ = _mean_subscale(responses, _CBI_WB_ITEMS, missing_ra)
-    fatigue_raw, _ = _mean_subscale(responses, _CBI_PB_ITEMS, missing_mfs)
+    # Subscale means (0-100) — use validated CBIResult when available
+    if cbi_result is not None:
+        resource_raw = cbi_result.subscales.work_related
+        fatigue_raw = cbi_result.subscales.personal
+    else:
+        resource_raw, _ = _mean_subscale(responses, _CBI_WB_ITEMS, missing_ra)
+        fatigue_raw, _ = _mean_subscale(responses, _CBI_PB_ITEMS, missing_mfs)
 
     # Impute with median if missing (same as train.py engineer_features)
     RA_MEDIAN_CBI = 3.5 * (100.0 / 6.0)   # Kaggle train median ≈ 3.5/6
