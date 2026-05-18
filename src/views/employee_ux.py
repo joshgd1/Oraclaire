@@ -140,7 +140,7 @@ def _inject_collapsible_css(pastel_bg: str | None, text_color: str):
         border: 1px solid {border};
         border-radius: 12px;
         margin-bottom: 16px;
-        overflow: hidden;
+        overflow: visible;
     }}
     details.oraclaire-card summary {{
         padding: 14px 18px;
@@ -164,6 +164,7 @@ def _inject_collapsible_css(pastel_bg: str | None, text_color: str):
     details.oraclaire-card .card-body {{
         padding: 0 18px 16px;
         border-top: 1px solid {border};
+        min-height: 60px;
     }}
     </style>
     """, unsafe_allow_html=True)
