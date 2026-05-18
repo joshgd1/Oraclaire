@@ -32,7 +32,7 @@ THEME = {
     "high": "#f97316",
     "critical": "#ef4444",
     "text": "#e5e7eb",
-    "text_secondary": "#9ca3af",
+    "text_secondary": "#b0b8c9",
     "card_bg": "#2a2a3e",
     "border": "#3d3d5c",
     "bg": "#1e1e2e",
